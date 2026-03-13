@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vori Payments Analyzer</title>
+  <meta name="description" content="Upload your merchant statement to instantly uncover your true processing rate." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0D0D1A; font-family: 'DM Sans', system-ui, sans-serif; color: #F0F0FF; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
+    input::placeholder { color: #2A2A50; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 700px) {
+      .main-grid { grid-template-columns: 1fr !important; }
+      .two-col   { grid-template-columns: 1fr !important; }
+      .model-grid { grid-template-columns: 1fr 1fr !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useRef } = React;
+
+    const fmt$ = v => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(v||0);
+    const fmtPct = (v,d=3) => isNaN(v)||!isFinite(v)||v===0 ? "—" : `${Number(v).toFixed(d)}%`;
+    const n = v => parseFloat(v) || 0;
+
+    const C = {
+      bg:"#0D0D1A", surface:"#13132A", surfaceAlt:"#1A1A30",
+      border:"#2A2A50", purple:"#8B5CF6", purpleDim:"#7C3AED",
+      purpleBg:"rgba(139,92,246,0.08)", text:"#F0F0FF",
+      muted:"#9B9BC4", subtle:"#4A4A78", white:"#FFFFFF",
+    };
+
+    const CARDS = [
+      {key:"visa",       label:"Visa",       color:"#60A5FA"},
+      {key:"mastercard", label:"Mastercard", color:"#F87171"},
+      {key:"discover",   label:"Discover",   color:"#FBBF24"},
+      {key:"amex",       label:"Amex",       color:"#34D399"},
+      {key:"debit",      label:"Debit",      color:"#A78BFA"},
+      {key:"ebt",        label:"EBT",        color:"#94A3B8"},
+    ];
+
+    const ratingOf = r => {
+      if(r===0) return {text:"—",           color:C.muted};
+      if(r<1.8) return {text:"Excellent ✦", color:"#4ADE80"};
+      if(r<2.2) return {text:"Good",        color:"#86EFAC"};
+      if(r<2.8) return {text:"Average",     color:"#FCD34D"};
+      if(r<3.5) return {text:"High",        color:"#FB923C"};
+      return          {text:"Very High",    color:"#F87171"};
+    };
+
+    const Label = ({children}) => (
+      <p style={{margin:"0 0 5px",fontSize:"0.67rem",fontWeight:700,
+        letterSpacing:"0.11em",textTransform:"uppercase",color:C.muted}}>{children}</p>
+    );
+
+    function Field({label,prefix,suffix,value,onChange,placeholder,hint,readOnly,small}) {
+      const [focused, setFocused] = useState(false);
+      return (
+        <div style={{marginBottom:small?"0":"1rem"}}>
+          {label && <Label>{label}</Label>}
+          <div style={{display:"flex",alignItems:"center",
+            background:readOnly?C.surfaceAlt:C.bg,
+            border:`1px solid ${focused?C.purple+"60":C.border}`,
+            borderRadius:7,overflow:"hidden",transition:"border-color 0.2s"}}>
+            {prefix && <span style={{padding:"0 8px",color:C.subtle,fontFamily:"monospace",fontSize:"0.8rem"}}>{prefix}</span>}
+            <input readOnly={readOnly} type="number" min="0" step="any"
+              value={value} onChange={e=>onChange&&onChange(e.target.value)}
+              placeholder={placeholder||"0"}
+              onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+              style={{flex:1,background:"transparent",border:"none",outline:"none",
+                color:readOnly?C.purple:C.text,
+                fontSize:small?"0.82rem":"0.9rem",
+                fontFamily:"'DM Mono',monospace",
+                padding:small?"7px 6px":"9px 6px"}} />
+            {suffix && <span style={{padding:"0 8px",color:C.subtle,fontSize:"0.78rem"}}>{suffix}</span>}
+          </div>
+          {hint && <p style={{margin:"3px 0 0",fontSize:"0.63rem",color:C.subtle}}>{hint}</p>}
+        </div>
+      );
+    }
+
+    const KPI = ({label,value,sub,accent,hero}) => (
+      <div style={{
+        background:accent?"linear-gradient(135deg,#3b1f8c,#1e0e5c)":C.surface,
+        border:`1px solid ${accent?C.purple+"50":C.border}`,
+        borderRadius:12,padding:hero?"1.4rem":"1rem",position:"relative",overflow:"hidden"}}>
+        {accent && <div style={{position:"absolute",top:-30,right:-30,width:100,height:100,
+          borderRadius:"50%",background:"rgba(139,92,246,0.07)"}}/>}
+        <p style={{margin:0,fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",
+          textTransform:"uppercase",color:accent?C.purple+"cc":C.muted}}>{label}</p>
+        <p style={{margin:"4px 0 0",fontSize:hero?"1.9rem":"1.35rem",fontWeight:800,
+          color:accent?C.purple:C.text,fontFamily:"'DM Mono',monospace",lineHeight:1}}>{value}</p>
+        {sub && <p style={{margin:"4px 0 0",fontSize:"0.69rem",
+          color:accent?C.purple+"99":C.subtle}}>{sub}</p>}
+      </div>
+    );
+
+    const SecHead = ({icon,title}) => (
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"1rem",
+        paddingBottom:"0.55rem",borderBottom:`1px solid ${C.border}`}}>
+        <span style={{fontSize:"0.85rem"}}>{icon}</span>
+        <h3 style={{margin:0,fontSize:"0.67rem",fontWeight:700,letterSpacing:"0.12em",
+          textTransform:"uppercase",color:C.muted}}>{title}</h3>
+      </div>
+    );
+
+    const Bar = ({label,value,total,color}) => {
+      const pct = total>0?(value/total)*100:0;
+      return (
+        <div style={{marginBottom:"0.8rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+            <span style={{fontSize:"0.72rem",color:C.muted}}>{label}</span>
+            <div style={{display:"flex",gap:14}}>
+              <span style={{fontSize:"0.72rem",color:C.subtle}}>{value>0?`${pct.toFixed(1)}%`:"—"}</span>
+              <span style={{fontSize:"0.72rem",fontFamily:"monospace",color:C.text,minWidth:70,textAlign:"right"}}>
+                {value>0?fmt$(value):"—"}
+              </span>
+            </div>
+          </div>
+          <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}>
+            <div style={{width:`${pct}%`,height:"100%",background:color,borderRadius:2,transition:"width 0.5s ease"}}/>
+          </div>
+        </div>
+      );
+    };
+
+    async function parseStatementWithAI(fileBase64, mimeType) {
+      const res = await fetch("/api/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileBase64, mimeType }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      return await res.json();
+    }
+
+    function App() {
+      const fileRef = useRef(null);
+      const [uploading,    setUploading]    = useState(false);
+      const [uploadError,  setUploadError]  = useState("");
+      const [aiNotes,      setAiNotes]      = useState("");
+      const [fileName,     setFileName]     = useState("");
+      const [dragOver,     setDragOver]     = useState(false);
+
+      const [pricingModel,    setPricingModel]    = useState("");
+      const [totalVolume,     setTotalVolume]     = useState("");
+      const [txnCount,        setTxnCount]        = useState("");
+      const [discountFees,    setDiscountFees]    = useState("");
+      const [transactionFees, setTransactionFees] = useState("");
+      const [monthlyFees,     setMonthlyFees]     = useState("");
+      const [chargebackFees,  setChargebackFees]  = useState("");
+      const [otherFees,       setOtherFees]       = useState("");
+      const [quotedRate,      setQuotedRate]      = useState("");
+      const [quotedPerTxn,    setQuotedPerTxn]    = useState("");
+      const [icMarkupPct,     setIcMarkupPct]     = useState("");
+      const [icMarkupPerTxn,  setIcMarkupPerTxn]  = useState("");
+
+      const calc = useMemo(() => {
+        const vol  = n(totalVolume), txns = n(txnCount);
+        const disc = n(discountFees), txnF = n(transactionFees);
+        const mnth = n(monthlyFees),  cb   = n(chargebackFees), other = n(otherFees);
+        const totalFees      = disc+txnF+mnth+cb+other;
+        const processingFees = disc+txnF;
+        const effectiveRate  = vol>0?(totalFees/vol)*100:0;
+        const processingRate = vol>0?(processingFees/vol)*100:0;
+        const costPerTxn     = txns>0?totalFees/txns:0;
+        const avgTicket      = txns>0&&vol>0?vol/txns:0;
+        const qRate = n(quotedRate), qPt = n(quotedPerTxn);
+        const quotedCost = vol>0?(vol*qRate/100)+(txns*qPt):0;
+        const quotedEff  = vol>0&&quotedCost>0?(quotedCost/vol)*100:0;
+        const savings    = quotedCost>0?quotedCost-totalFees:null;
+        return {vol,txns,totalFees,processingFees,fixedFees:mnth+cb+other,
+                effectiveRate,processingRate,costPerTxn,avgTicket,
+                quotedCost,quotedEff,savings};
+      },[totalVolume,txnCount,discountFees,transactionFees,monthlyFees,chargebackFees,otherFees,quotedRate,quotedPerTxn]);
+
+      const processFile = async (file) => {
+        if(!file) return;
+        const allowed=["application/pdf","image/png","image/jpeg","image/jpg","image/webp"];
+        if(!allowed.includes(file.type)){setUploadError("Please upload a PDF or image.");return;}
+        setUploadError("");setUploading(true);setFileName(file.name);setAiNotes("");
+        try {
+          const b64 = await new Promise((res,rej)=>{
+            const r=new FileReader();
+            r.onload=()=>res(r.result.split(",")[1]);
+            r.onerror=rej; r.readAsDataURL(file);
+          });
+          const result = await parseStatementWithAI(b64, file.type);
+          if(result.totalVolume)      setTotalVolume(String(result.totalVolume));
+          if(result.transactionCount) setTxnCount(String(result.transactionCount));
+          if(result.discountFees)     setDiscountFees(String(result.discountFees));
+          if(result.transactionFees)  setTransactionFees(String(result.transactionFees));
+          if(result.monthlyFees)      setMonthlyFees(String(result.monthlyFees));
+          if(result.chargebackFees)   setChargebackFees(String(result.chargebackFees));
+          if(result.otherFees)        setOtherFees(String(result.otherFees));
+          if(result.pricingModel&&result.pricingModel!=="unknown") setPricingModel(result.pricingModel);
+          if(result.icMarkupPct)      setIcMarkupPct(String(result.icMarkupPct));
+          if(result.icMarkupPerTxn)   setIcMarkupPerTxn(String(result.icMarkupPerTxn));
+          if(result.notes)            setAiNotes(result.notes);
+        } catch(e) {
+          setUploadError("Could not parse statement — enter values manually below.");
+        } finally { setUploading(false); }
+      };
+
+      const handleDrop = e => {e.preventDefault();setDragOver(false);processFile(e.dataTransfer.files[0]);};
+      const rating = ratingOf(calc.effectiveRate);
+
+      return (
+        <div style={{minHeight:"100vh",background:C.bg,padding:"2rem 1rem"}}>
+
+          {/* HEADER */}
+          <div style={{maxWidth:1020,margin:"0 auto 2rem",display:"flex",
+            alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem"}}>
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem"}}>
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                  <rect width="28" height="28" rx="7" fill={C.purple}/>
+                  <path d="M7 8l7 12 7-12" stroke="#0D0D1A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span style={{fontSize:"1.2rem",fontWeight:800,letterSpacing:"-0.02em",color:C.white}}>vori</span>
+                <span style={{width:1,height:18,background:C.border,margin:"0 4px"}}/>
+                <span style={{fontSize:"0.75rem",color:C.muted,fontWeight:500}}>Payments Analyzer</span>
+
+              </div>
+
+              <span style={{display:"inline-flex",alignItems:"center",gap:6,background:C.purpleBg,
+                border:`1px solid ${C.purpleDim}40`,borderRadius:100,padding:"4px 12px",
+                fontSize:"0.65rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.purple}}>
+                ✦ Merchant Statement Intelligence
+              </span>
+              <h1 style={{margin:"0.75rem 0 0.4rem",fontSize:"clamp(1.8rem,4vw,2.6rem)",
+                fontWeight:800,lineHeight:1.08,letterSpacing:"-0.025em"}}>
+                Uncover Your True<br/>
+                <span style={{color:C.purple}}>Processing Rate</span>
+              </h1>
+              <p style={{margin:0,color:C.muted,fontSize:"0.88rem",maxWidth:460}}>
+                Upload a merchant statement — AI extracts every fee automatically. Or enter values manually.
+              </p>
+            </div>
+
+            {calc.effectiveRate>0 && (
+              <div style={{background:C.surface,border:`1px solid ${rating.color}30`,
+                borderRadius:14,padding:"1.1rem 1.4rem",textAlign:"center",minWidth:140}}>
+                <p style={{margin:0,fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",
+                  textTransform:"uppercase",color:C.muted}}>Rate Rating</p>
+                <p style={{margin:"4px 0 0",fontSize:"1.4rem",fontWeight:800,color:rating.color}}>{rating.text}</p>
+                <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:6}}>
+                  {[0,1,2,3,4].map(i=>(
+                    <div key={i} style={{width:18,height:4,borderRadius:2,
+                      background:i<["Excellent ✦","Good","Average","High","Very High"]
+                        .indexOf(rating.text.replace(" ✦",""))+1?rating.color:C.border}}/>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{maxWidth:1020,margin:"0 auto"}}>
+
+            {/* UPLOAD */}
+            <div onClick={()=>fileRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+              onDragLeave={()=>setDragOver(false)}
+              style={{border:`2px dashed ${dragOver?C.purple:uploading?C.purple+"60":C.border}`,
+                borderRadius:14,padding:"1.8rem",textAlign:"center",
+                background:dragOver?C.purpleBg:C.surface,
+                cursor:"pointer",marginBottom:"1.2rem",transition:"all 0.2s"}}>
+              <input ref={fileRef} type="file" accept=".pdf,image/*"
+                style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
+              {uploading ? (
+                <div>
+                  <div style={{display:"inline-block",width:32,height:32,
+                    border:`3px solid ${C.purple}30`,borderTop:`3px solid ${C.purple}`,
+                    borderRadius:"50%",animation:"spin 0.8s linear infinite",marginBottom:10}}/>
+                  <p style={{margin:0,color:C.purple,fontWeight:600}}>AI is reading your statement…</p>
+                </div>
+              ) : fileName ? (
+                <div>
+                  <p style={{margin:0,color:C.purple,fontWeight:700}}>✅ {fileName}</p>
+                  <p style={{margin:"4px 0 0",fontSize:"0.73rem",color:C.muted}}>Parsed — review fields below or upload new file</p>
+                </div>
+              ) : (
+                <div>
+                  <div style={{fontSize:"1.8rem",marginBottom:8}}>📄</div>
+                  <p style={{margin:0,color:C.text,fontWeight:700}}>Upload Merchant Statement</p>
+                  <p style={{margin:"6px 0 0",fontSize:"0.76rem",color:C.muted}}>Drag & drop or click — PDF, PNG, JPG supported</p>
+                  <div style={{marginTop:10,display:"inline-block",background:C.purpleBg,
+                    border:`1px solid ${C.purple}40`,borderRadius:8,padding:"6px 18px",
+                    fontSize:"0.74rem",fontWeight:700,color:C.purple}}>Choose File</div>
+                </div>
+              )}
+            </div>
+
+            {uploadError && (
+              <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",
+                borderRadius:10,padding:"0.7rem 1rem",marginBottom:"1rem",fontSize:"0.77rem",color:"#FCA5A5"}}>
+                ⚠️ {uploadError}
+              </div>
+            )}
+            {aiNotes && (
+              <div style={{background:C.purpleBg,border:`1px solid ${C.purple}30`,
+                borderRadius:10,padding:"0.7rem 1rem",marginBottom:"1rem",
+                fontSize:"0.77rem",color:C.purple,display:"flex",gap:8}}>
+                <span>✦</span><span><strong>AI Summary:</strong> {aiNotes}</span>
+              </div>
+            )}
+
+            {/* MAIN GRID */}
+            <div className="main-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.2rem"}}>
+
+              {/* LEFT */}
+              <div style={{display:"flex",flexDirection:"column",gap:"1.2rem"}}>
+
+                {/* Volume */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                  <SecHead icon="📊" title="Processing Volume"/>
+                  <Field label="Total Monthly Volume" prefix="$" value={totalVolume} onChange={setTotalVolume} hint="Gross card volume processed"/>
+                  <Field label="Number of Transactions" value={txnCount} onChange={setTxnCount} placeholder="0" hint="Total transaction count"/>
+                  {calc.avgTicket>0 && (
+                    <div style={{display:"flex",justifyContent:"space-between",padding:"7px 10px",
+                      background:C.surfaceAlt,borderRadius:7}}>
+                      <span style={{fontSize:"0.72rem",color:C.muted}}>Avg Ticket</span>
+                      <span style={{fontSize:"0.72rem",fontFamily:"monospace",color:C.purple}}>{fmt$(calc.avgTicket)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pricing Model */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                  <SecHead icon="💳" title="Pricing Model"/>
+                  <p style={{margin:"0 0 0.9rem",fontSize:"0.73rem",color:C.muted}}>
+                    Select your pricing structure — this helps interpret your statement correctly.
+                  </p>
+                  <div className="model-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.6rem",marginBottom:pricingModel?"1rem":0}}>
+                    {[
+                      {id:"interchange_plus",label:"Interchange+",icon:"⚡",desc:"IC cost + markup"},
+                      {id:"flat_rate",       label:"Flat Rate",   icon:"▬", desc:"One fixed % rate"},
+                      {id:"tiered",          label:"Tiered",      icon:"◈", desc:"Qual / mid / non-qual"},
+                    ].map(({id,label,icon,desc})=>(
+                      <div key={id} onClick={()=>setPricingModel(p=>p===id?"":id)}
+                        style={{cursor:"pointer",borderRadius:10,padding:"0.8rem 0.6rem",textAlign:"center",
+                          background:pricingModel===id?C.purpleBg:C.surfaceAlt,
+                          border:`1.5px solid ${pricingModel===id?C.purple:C.border}`,
+                          transition:"all 0.15s"}}>
+                        <div style={{fontSize:"1rem",marginBottom:3}}>{icon}</div>
+                        <div style={{fontSize:"0.7rem",fontWeight:700,
+                          color:pricingModel===id?C.purple:C.text}}>{label}</div>
+                        <div style={{fontSize:"0.6rem",color:C.muted,marginTop:2,lineHeight:1.3}}>{desc}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {pricingModel==="interchange_plus" && (
+                    <div style={{background:C.surfaceAlt,borderRadius:10,padding:"1rem"}}>
+                      <p style={{margin:"0 0 0.6rem",fontSize:"0.68rem",fontWeight:700,
+                        color:C.purple,letterSpacing:"0.08em",textTransform:"uppercase"}}>⚡ Your Markup Over Interchange</p>
+                      <p style={{margin:"0 0 0.8rem",fontSize:"0.71rem",color:C.muted,lineHeight:1.5}}>
+                        Your processor charges actual interchange cost + your fixed markup. Enter your markup below.
+                      </p>
+                      <Field label="Markup Rate %" suffix="%" value={icMarkupPct} onChange={setIcMarkupPct} placeholder="e.g. 0.30"/>
+                      <Field label="Markup Per-Transaction" prefix="$" value={icMarkupPerTxn} onChange={setIcMarkupPerTxn} placeholder="e.g. 0.10"/>
+                      {(n(icMarkupPct)>0||n(icMarkupPerTxn)>0)&&calc.vol>0 && (
+                        <div style={{background:C.bg,borderRadius:8,padding:"0.7rem",
+                          border:`1px solid ${C.purple}30`,marginTop:"0.5rem"}}>
+                          <p style={{margin:"0 0 3px",fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.1em",
+                            textTransform:"uppercase",color:C.muted}}>Markup Cost This Month</p>
+                          <p style={{margin:0,fontSize:"1.1rem",fontWeight:800,fontFamily:"monospace",color:C.purple}}>
+                            {fmt$((calc.vol*n(icMarkupPct)/100)+(calc.txns*n(icMarkupPerTxn)))}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {pricingModel==="flat_rate" && (
+                    <div style={{background:C.surfaceAlt,borderRadius:10,padding:"1rem"}}>
+                      <p style={{margin:"0 0 0.6rem",fontSize:"0.68rem",fontWeight:700,
+                        color:C.purple,letterSpacing:"0.08em",textTransform:"uppercase"}}>▬ Flat Rate Pricing</p>
+                      <p style={{margin:0,fontSize:"0.71rem",color:C.muted,lineHeight:1.5}}>
+                        One blended rate on all card types. Simple but often more expensive for high-volume merchants. Your effective rate below shows the real cost — compare it to your quoted rate.
+                      </p>
+                    </div>
+                  )}
+                  {pricingModel==="tiered" && (
+                    <div style={{background:C.surfaceAlt,borderRadius:10,padding:"1rem"}}>
+                      <p style={{margin:"0 0 0.6rem",fontSize:"0.68rem",fontWeight:700,
+                        color:C.purple,letterSpacing:"0.08em",textTransform:"uppercase"}}>◈ Tiered Pricing</p>
+                      <p style={{margin:"0 0 0.75rem",fontSize:"0.71rem",color:C.muted,lineHeight:1.5}}>
+                        Transactions are bucketed into Qualified, Mid-Qualified, and Non-Qualified tiers. Least transparent model — processors control tier assignment.
+                      </p>
+                      <div style={{background:C.bg,borderRadius:8,padding:"0.65rem 0.8rem",
+                        border:"1px solid rgba(251,146,60,0.3)"}}>
+                        <p style={{margin:0,fontSize:"0.69rem",color:"#FB923C"}}>
+                          ⚠️ <strong>Tip:</strong> Ask your processor for Interchange Plus pricing — almost always cheaper for established merchants.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Fees */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                  <SecHead icon="🧾" title="Fees from Statement"/>
+                  <Field label="Discount / Interchange Fees" prefix="$" value={discountFees} onChange={setDiscountFees}
+                    hint={pricingModel==="interchange_plus"?"Total interchange cost paid (before markup)":"Percentage-based fees on volume"}/>
+                  <Field label="Per-Transaction Fees" prefix="$" value={transactionFees} onChange={setTransactionFees}
+                    hint={pricingModel==="interchange_plus"?"Auth fees + per-txn markup":"Auth fees, network fees, per-item fees"}/>
+                  <Field label="Monthly / Fixed Fees" prefix="$" value={monthlyFees} onChange={setMonthlyFees} hint="Statement, gateway, PCI, service fees"/>
+                  <Field label="Chargeback Fees" prefix="$" value={chargebackFees} onChange={setChargebackFees} hint="Dispute and retrieval fees"/>
+                  <Field label="Other Fees" prefix="$" value={otherFees} onChange={setOtherFees} hint="Any additional charges"/>
+                </div>
+
+                {/* Quoted Rate */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                  <SecHead icon="⚖️" title="Compare to Quoted Rate"/>
+                  <p style={{margin:"0 0 1rem",fontSize:"0.73rem",color:C.muted}}>
+                    Enter what you were quoted to see if you're actually paying that rate.
+                  </p>
+                  <Field label="Quoted Rate" suffix="%" value={quotedRate} onChange={setQuotedRate} placeholder="e.g. 2.5"/>
+                  <Field label="Quoted Per-Transaction Fee" prefix="$" value={quotedPerTxn} onChange={setQuotedPerTxn} placeholder="e.g. 0.10"/>
+                </div>
+              </div>
+
+              {/* RIGHT */}
+              <div style={{display:"flex",flexDirection:"column",gap:"1.2rem"}}>
+
+                {/* KPIs */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                  <SecHead icon="💡" title="Your True Cost"/>
+                  <div style={{display:"grid",gap:"0.7rem"}}>
+                    <KPI label="Effective Rate — All-In" value={fmtPct(calc.effectiveRate)} sub="Total fees ÷ total volume" accent hero/>
+                    <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}>
+                      <KPI label="Processing Rate" value={fmtPct(calc.processingRate)} sub="Variable fees only"/>
+                      <KPI label="Cost Per Transaction" value={calc.costPerTxn>0?fmt$(calc.costPerTxn):"—"} sub="All fees ÷ transactions"/>
+                    </div>
+                    <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}>
+                      <KPI label="Total Fees Paid" value={fmt$(calc.totalFees)} sub="This month"/>
+                      <KPI label="Avg Ticket" value={calc.avgTicket>0?fmt$(calc.avgTicket):"—"} sub="Volume ÷ transactions"/>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fee Breakdown */}
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                  <SecHead icon="📋" title="Fee Breakdown"/>
+                  <Bar label="Discount / Interchange" value={n(discountFees)}    total={calc.totalFees} color="#8B5CF6"/>
+                  <Bar label="Per-Transaction Fees"   value={n(transactionFees)} total={calc.totalFees} color="#A78BFA"/>
+                  <Bar label="Monthly Fixed Fees"     value={n(monthlyFees)}     total={calc.totalFees} color="#60A5FA"/>
+                  <Bar label="Chargeback Fees"        value={n(chargebackFees)}  total={calc.totalFees} color="#F472B6"/>
+                  <Bar label="Other Fees"             value={n(otherFees)}       total={calc.totalFees} color="#94A3B8"/>
+                  <div style={{marginTop:"0.9rem",paddingTop:"0.7rem",borderTop:`1px solid ${C.border}`,
+                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:"0.77rem",fontWeight:700,color:C.text}}>Total Monthly Fees</span>
+                    <span style={{fontSize:"1rem",fontWeight:800,fontFamily:"monospace",color:C.purple}}>{fmt$(calc.totalFees)}</span>
+                  </div>
+                </div>
+
+                {/* Quoted vs Actual */}
+                {(n(quotedRate)>0||n(quotedPerTxn)>0)&&calc.quotedCost>0 && (
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                    <SecHead icon="🔀" title="Quoted vs. Actual"/>
+                    <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem",marginBottom:"0.7rem"}}>
+                      <div style={{background:C.surfaceAlt,borderRadius:9,padding:"0.9rem"}}>
+                        <p style={{margin:0,fontSize:"0.61rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.muted}}>Quoted Cost</p>
+                        <p style={{margin:"4px 0 0",fontSize:"1.1rem",fontWeight:800,fontFamily:"monospace",color:C.muted}}>{fmt$(calc.quotedCost)}</p>
+                        <p style={{margin:"2px 0 0",fontSize:"0.68rem",color:C.subtle}}>{fmtPct(calc.quotedEff)} effective</p>
+                      </div>
+                      <div style={{background:C.surfaceAlt,borderRadius:9,padding:"0.9rem"}}>
+                        <p style={{margin:0,fontSize:"0.61rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.muted}}>Actual Cost</p>
+                        <p style={{margin:"4px 0 0",fontSize:"1.1rem",fontWeight:800,fontFamily:"monospace",color:C.text}}>{fmt$(calc.totalFees)}</p>
+                        <p style={{margin:"2px 0 0",fontSize:"0.68rem",color:C.subtle}}>{fmtPct(calc.effectiveRate)} effective</p>
+                      </div>
+                    </div>
+                    {calc.savings!==null && (
+                      <div style={{background:calc.savings>0?"rgba(239,68,68,0.08)":"rgba(74,222,128,0.08)",
+                        border:`1px solid ${calc.savings>0?"rgba(239,68,68,0.3)":"rgba(74,222,128,0.3)"}`,
+                        borderRadius:9,padding:"0.75rem 1rem",
+                        display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                        <span style={{fontSize:"0.75rem",color:calc.savings>0?"#FCA5A5":"#86EFAC"}}>
+                          {calc.savings>0?"⚠️ Paying more than quoted":"✅ Paying less than quoted"}
+                        </span>
+                        <span style={{fontSize:"0.95rem",fontWeight:800,fontFamily:"monospace",
+                          color:calc.savings>0?"#EF4444":"#22c55e",whiteSpace:"nowrap"}}>
+                          {calc.savings>0?"+":"-"}{fmt$(Math.abs(calc.savings))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Annualized */}
+                {calc.totalFees>0 && (
+                  <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"1.3rem"}}>
+                    <SecHead icon="📅" title="Annualized Projections"/>
+                    <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}>
+                      <KPI label="Annual Volume"    value={fmt$(calc.vol*12)}/>
+                      <KPI label="Annual Fees Paid" value={fmt$(calc.totalFees*12)}/>
+                    </div>
+                    {calc.savings>0 && (
+                      <div style={{marginTop:"0.7rem",background:"rgba(239,68,68,0.06)",
+                        border:"1px solid rgba(239,68,68,0.2)",borderRadius:9,
+                        padding:"0.7rem 0.9rem",fontSize:"0.74rem",color:"#FCA5A5"}}>
+                        ⚠️ You're paying <strong>{fmt$(calc.savings*12)}</strong> extra per year vs. quoted.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <p style={{textAlign:"center",margin:"1.5rem 0 0",fontSize:"0.62rem",color:C.subtle}}>
+              Effective rate = total fees ÷ total processing volume · Vori Payments Intelligence
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
