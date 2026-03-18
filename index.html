@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -136,14 +136,49 @@
       );
     };
 
-    async function parseStatementWithAI(fileBase64, mimeType) {
-      const res = await fetch("/api/parse", {
+    async function parseStatementWithAI(fileBase64, mimeType, apiKey) {
+      const content = mimeType === "application/pdf"
+        ? [{ type:"document", source:{ type:"base64", media_type:"application/pdf", data:fileBase64 }},
+           { type:"text", text:"Extract all payment processing data from this merchant statement." }]
+        : [{ type:"image", source:{ type:"base64", media_type:mimeType, data:fileBase64 }},
+           { type:"text", text:"Extract all payment processing data from this merchant statement." }];
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileBase64, mimeType }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: `You are an expert at reading merchant payment processing statements.
+Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for missing values.
+{
+  "totalVolume": <number>,
+  "transactionCount": <number>,
+  "discountFees": <number>,
+  "transactionFees": <number>,
+  "monthlyFees": <number>,
+  "chargebackFees": <number>,
+  "otherFees": <number>,
+  "pricingModel": "<interchange_plus|flat_rate|tiered|unknown>",
+  "icMarkupPct": <number>,
+  "icMarkupPerTxn": <number>,
+  "notes": "<1-2 sentence summary>"
+}`,
+          messages: [{ role:"user", content }]
+        })
       });
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      return await res.json();
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`API error: ${err}`);
+      }
+      const data = await res.json();
+      const raw = data.content?.find(b => b.type==="text")?.text || "{}";
+      return JSON.parse(raw.replace(/```json|```/g,"").trim());
     }
 
     function App() {
@@ -153,6 +188,8 @@
       const [aiNotes,      setAiNotes]      = useState("");
       const [fileName,     setFileName]     = useState("");
       const [dragOver,     setDragOver]     = useState(false);
+      const [apiKey,       setApiKey]       = useState(() => localStorage.getItem('vori_api_key') || '');
+      const [showKeyInput, setShowKeyInput] = useState(false);
 
       const [pricingModel,    setPricingModel]    = useState("");
       const [totalVolume,     setTotalVolume]     = useState("");
@@ -197,7 +234,8 @@
             r.onload=()=>res(r.result.split(",")[1]);
             r.onerror=rej; r.readAsDataURL(file);
           });
-          const result = await parseStatementWithAI(b64, file.type);
+          if(!apiKey){ setUploadError("Please add your Anthropic API key first — click the 🔑 button above."); setUploading(false); return; }
+          const result = await parseStatementWithAI(b64, file.type, apiKey);
           if(result.totalVolume)      setTotalVolume(String(result.totalVolume));
           if(result.transactionCount) setTxnCount(String(result.transactionCount));
           if(result.discountFees)     setDiscountFees(String(result.discountFees));
@@ -232,9 +270,37 @@
                 <span style={{fontSize:"1.2rem",fontWeight:800,letterSpacing:"-0.02em",color:C.white}}>vori</span>
                 <span style={{width:1,height:18,background:C.border,margin:"0 4px"}}/>
                 <span style={{fontSize:"0.75rem",color:C.muted,fontWeight:500}}>Payments Analyzer</span>
+                <button onClick={()=>setShowKeyInput(v=>!v)}
+                  style={{marginLeft:8,background:apiKey?C.purpleBg:"rgba(251,146,60,0.1)",
+                    border:`1px solid ${apiKey?C.purple+"40":"rgba(251,146,60,0.4)"}`,
+                    borderRadius:6,padding:"3px 10px",cursor:"pointer",
+                    fontSize:"0.65rem",fontWeight:700,color:apiKey?C.purple:"#FB923C"}}>
+                  {apiKey?"🔑 Key saved":"🔑 Add API Key"}
+                </button>
 
               </div>
 
+              {showKeyInput && (
+                <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,
+                  padding:"1rem",marginBottom:"1rem",maxWidth:500}}>
+                  <p style={{margin:"0 0 8px",fontSize:"0.71rem",color:C.muted,lineHeight:1.5}}>
+                    Enter your <a href="https://console.anthropic.com/settings/keys" target="_blank"
+                    style={{color:C.purple}}>Anthropic API key</a> to enable AI parsing. Stored in your browser only — never shared.
+                  </p>
+                  <div style={{display:"flex",gap:8}}>
+                    <input type="password" value={apiKey}
+                      onChange={e=>{setApiKey(e.target.value); localStorage.setItem('vori_api_key',e.target.value);}}
+                      placeholder="sk-ant-..."
+                      style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,
+                        padding:"8px 10px",color:C.text,fontSize:"0.82rem",fontFamily:"monospace",outline:"none"}}/>
+                    <button onClick={()=>setShowKeyInput(false)}
+                      style={{background:C.purple,border:"none",borderRadius:6,
+                        padding:"8px 16px",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.8rem"}}>
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
               <span style={{display:"inline-flex",alignItems:"center",gap:6,background:C.purpleBg,
                 border:`1px solid ${C.purpleDim}40`,borderRadius:100,padding:"4px 12px",
                 fontSize:"0.65rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.purple}}>
