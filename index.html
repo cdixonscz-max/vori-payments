@@ -288,12 +288,12 @@ Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for m
                     style={{color:C.purple}}>Anthropic API key</a> to enable AI parsing. Stored in your browser only — never shared.
                   </p>
                   <div style={{display:"flex",gap:8}}>
-                    <input type="password" value={apiKey}
+                    <input type="text" value={apiKey}
                       onChange={e=>{setApiKey(e.target.value); localStorage.setItem('vori_api_key',e.target.value);}}
                       placeholder="sk-ant-..."
                       style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,
                         padding:"8px 10px",color:C.text,fontSize:"0.82rem",fontFamily:"monospace",outline:"none"}}/>
-                    <button onClick={()=>setShowKeyInput(false)}
+                    <button onClick={()=>{ localStorage.setItem("vori_api_key", apiKey); setShowKeyInput(false); alert("API key saved! Try uploading your statement now."); }}
                       style={{background:C.purple,border:"none",borderRadius:6,
                         padding:"8px 16px",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.8rem"}}>
                       Save
