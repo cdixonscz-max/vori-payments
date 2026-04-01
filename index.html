@@ -136,49 +136,17 @@
       );
     };
 
-    async function parseStatementWithAI(fileBase64, mimeType, apiKey) {
-      const content = mimeType === "application/pdf"
-        ? [{ type:"document", source:{ type:"base64", media_type:"application/pdf", data:fileBase64 }},
-           { type:"text", text:"Extract all payment processing data from this merchant statement." }]
-        : [{ type:"image", source:{ type:"base64", media_type:mimeType, data:fileBase64 }},
-           { type:"text", text:"Extract all payment processing data from this merchant statement." }];
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+    async function parseStatementWithAI(fileBase64, mimeType) {
+      const res = await fetch("/api/parse", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are an expert at reading merchant payment processing statements.
-Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for missing values.
-{
-  "totalVolume": <number>,
-  "transactionCount": <number>,
-  "discountFees": <number>,
-  "transactionFees": <number>,
-  "monthlyFees": <number>,
-  "chargebackFees": <number>,
-  "otherFees": <number>,
-  "pricingModel": "<interchange_plus|flat_rate|tiered|unknown>",
-  "icMarkupPct": <number>,
-  "icMarkupPerTxn": <number>,
-  "notes": "<1-2 sentence summary>"
-}`,
-          messages: [{ role:"user", content }]
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileBase64, mimeType }),
       });
       if (!res.ok) {
         const err = await res.text();
         throw new Error(`API error: ${err}`);
       }
-      const data = await res.json();
-      const raw = data.content?.find(b => b.type==="text")?.text || "{}";
-      return JSON.parse(raw.replace(/```json|```/g,"").trim());
+      return await res.json();
     }
 
     function App() {
@@ -235,7 +203,7 @@ Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for m
             r.onerror=rej; r.readAsDataURL(file);
           });
           if(!apiKey){ setUploadError("Please add your Anthropic API key first — click the 🔑 button above."); setUploading(false); return; }
-          const result = await parseStatementWithAI(b64, file.type, apiKey);
+          const result = await parseStatementWithAI(b64, file.type);
           if(result.totalVolume)      setTotalVolume(String(result.totalVolume));
           if(result.transactionCount) setTxnCount(String(result.transactionCount));
           if(result.discountFees)     setDiscountFees(String(result.discountFees));
