@@ -202,7 +202,6 @@
             r.onload=()=>res(r.result.split(",")[1]);
             r.onerror=rej; r.readAsDataURL(file);
           });
-          if(!apiKey){ setUploadError("Please add your Anthropic API key first — click the 🔑 button above."); setUploading(false); return; }
           const result = await parseStatementWithAI(b64, file.type);
           if(result.totalVolume)      setTotalVolume(String(result.totalVolume));
           if(result.transactionCount) setTxnCount(String(result.transactionCount));
