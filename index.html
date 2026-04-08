@@ -215,7 +215,7 @@
           if(result.icMarkupPerTxn)   setIcMarkupPerTxn(String(result.icMarkupPerTxn));
           if(result.notes)            setAiNotes(result.notes);
         } catch(e) {
-          setUploadError("setUploadError("Error: " + e.message); — enter values manually below.");
+          setUploadError("Error: " + e.message);("Error: " + e.message); — enter values manually below.");
         } finally { setUploading(false); }
       };
 
