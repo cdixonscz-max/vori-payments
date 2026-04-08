@@ -1,8 +1,9 @@
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '20mb',responseLimit: '20mb',
+      sizeLimit: '25mb',
     },
+    responseLimit: '25mb',
   },
 };
 
@@ -20,14 +21,30 @@ export default async function handler(req, res) {
   try {
     const { fileBase64, mimeType } = req.body;
 
+    if (!fileBase64 || !mimeType) {
+      return res.status(400).json({ error: "Missing fileBase64 or mimeType in request body." });
+    }
+
     const content = mimeType === "application/pdf"
       ? [
-          { type: "document", source: { type: "base64", media_type: "application/pdf", data: fileBase64 } },
-          { type: "text", text: "Extract all payment processing data from this merchant statement." }
+          {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: fileBase64 }
+          },
+          {
+            type: "text",
+            text: "This is a merchant payment processing statement (possibly multiple pages). Extract ALL fee and volume data from every page and return the totals."
+          }
         ]
       : [
-          { type: "image", source: { type: "base64", media_type: mimeType, data: fileBase64 } },
-          { type: "text", text: "Extract all payment processing data from this merchant statement." }
+          {
+            type: "image",
+            source: { type: "base64", media_type: mimeType, data: fileBase64 }
+          },
+          {
+            type: "text",
+            text: "This is a merchant payment processing statement. Extract all fee and volume data."
+          }
         ];
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -38,10 +55,14 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1000,
-        system: `You are an expert at reading merchant payment processing statements.
-Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for missing values.
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: `You are an expert at reading merchant payment processing statements — including multi-page statements.
+Read ALL pages and sum up totals across the entire statement.
+Return ONLY valid JSON with no markdown, no commentary, no extra text.
+Use 0 for any value not found.
+
+Return exactly this JSON:
 {
   "totalVolume": <number>,
   "transactionCount": <number>,
@@ -50,23 +71,25 @@ Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for m
   "monthlyFees": <number>,
   "chargebackFees": <number>,
   "otherFees": <number>,
-  "pricingModel": "<interchange_plus|flat_rate|tiered|unknown>",
+  "pricingModel": "interchange_plus" or "flat_rate" or "tiered" or "unknown",
   "icMarkupPct": <number>,
   "icMarkupPerTxn": <number>,
-  "notes": "<1-2 sentence summary>"
+  "notes": "<1-2 sentence summary of what was found>"
 }`,
         messages: [{ role: "user", content }]
       })
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const err = await response.text();
-      return res.status(response.status).json({ error: err });
+      return res.status(response.status).json({ error: responseText });
     }
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     const raw = data.content?.find(b => b.type === "text")?.text || "{}";
-    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    const clean = raw.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
     return res.status(200).json(parsed);
 
   } catch (err) {
