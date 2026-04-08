@@ -156,66 +156,8 @@
       const [aiNotes,      setAiNotes]      = useState("");
       const [fileName,     setFileName]     = useState("");
       const [dragOver,     setDragOver]     = useState(false);
-      const [apiKey,       setApiKey]       = useState(() => { try { return localStorage.getItem('vori_api_key') || ''; } catch(e) { return ''; } });
-      const [showKeyInput, setShowKeyInput] = useState(false);
-
-      const [pricingModel,    setPricingModel]    = useState("");
-      const [totalVolume,     setTotalVolume]     = useState("");
-      const [txnCount,        setTxnCount]        = useState("");
-      const [discountFees,    setDiscountFees]    = useState("");
-      const [transactionFees, setTransactionFees] = useState("");
-      const [monthlyFees,     setMonthlyFees]     = useState("");
-      const [chargebackFees,  setChargebackFees]  = useState("");
-      const [otherFees,       setOtherFees]       = useState("");
-      const [quotedRate,      setQuotedRate]      = useState("");
-      const [quotedPerTxn,    setQuotedPerTxn]    = useState("");
-      const [icMarkupPct,     setIcMarkupPct]     = useState("");
-      const [icMarkupPerTxn,  setIcMarkupPerTxn]  = useState("");
-
-      const calc = useMemo(() => {
-        const vol  = n(totalVolume), txns = n(txnCount);
-        const disc = n(discountFees), txnF = n(transactionFees);
-        const mnth = n(monthlyFees),  cb   = n(chargebackFees), other = n(otherFees);
-        const totalFees      = disc+txnF+mnth+cb+other;
-        const processingFees = disc+txnF;
-        const effectiveRate  = vol>0?(totalFees/vol)*100:0;
-        const processingRate = vol>0?(processingFees/vol)*100:0;
-        const costPerTxn     = txns>0?totalFees/txns:0;
-        const avgTicket      = txns>0&&vol>0?vol/txns:0;
-        const qRate = n(quotedRate), qPt = n(quotedPerTxn);
-        const quotedCost = vol>0?(vol*qRate/100)+(txns*qPt):0;
-        const quotedEff  = vol>0&&quotedCost>0?(quotedCost/vol)*100:0;
-        const savings    = quotedCost>0?quotedCost-totalFees:null;
-        return {vol,txns,totalFees,processingFees,fixedFees:mnth+cb+other,
-                effectiveRate,processingRate,costPerTxn,avgTicket,
-                quotedCost,quotedEff,savings};
-      },[totalVolume,txnCount,discountFees,transactionFees,monthlyFees,chargebackFees,otherFees,quotedRate,quotedPerTxn]);
-
-      const processFile = async (file) => {
-        if(!file) return;
-        const allowed=["application/pdf","image/png","image/jpeg","image/jpg","image/webp"];
-        if(!allowed.includes(file.type)){setUploadError("Please upload a PDF or image.");return;}
-        setUploadError("");setUploading(true);setFileName(file.name);setAiNotes("");
-        try {
-          const b64 = await new Promise((res,rej)=>{
-            const r=new FileReader();
-            r.onload=()=>res(r.result.split(",")[1]);
-            r.onerror=rej; r.readAsDataURL(file);
-          });
-          const result = await parseStatementWithAI(b64, file.type);
-          if(result.totalVolume)      setTotalVolume(String(result.totalVolume));
-          if(result.transactionCount) setTxnCount(String(result.transactionCount));
-          if(result.discountFees)     setDiscountFees(String(result.discountFees));
-          if(result.transactionFees)  setTransactionFees(String(result.transactionFees));
-          if(result.monthlyFees)      setMonthlyFees(String(result.monthlyFees));
-          if(result.chargebackFees)   setChargebackFees(String(result.chargebackFees));
-          if(result.otherFees)        setOtherFees(String(result.otherFees));
-          if(result.pricingModel&&result.pricingModel!=="unknown") setPricingModel(result.pricingModel);
-          if(result.icMarkupPct)      setIcMarkupPct(String(result.icMarkupPct));
-          if(result.icMarkupPerTxn)   setIcMarkupPerTxn(String(result.icMarkupPerTxn));
-          if(result.notes)            setAiNotes(result.notes);
-        } catch(e) {
-          setUploadError("Error: " + e.message);("Error: " + e.message); — enter values manually below.");
+      const [apiKey,       setApiKey]       = useState(() => { try { return localStorage.getItem('vori_api_key') || ''; } catch(e) {
+          setUploadError("Error: " + e.message);
         } finally { setUploading(false); }
       };
 
