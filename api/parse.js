@@ -38,7 +38,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 1000,
         system: `You are an expert at reading merchant payment processing statements.
 Extract data and return ONLY valid JSON, no markdown, no commentary. Use 0 for missing values.
