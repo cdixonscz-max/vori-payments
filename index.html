@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Vori Payments Analyzer</title>
+  <title>Toast Payments Analyzer</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-    body{background:#0D0D1A;font-family:'DM Sans',sans-serif;color:#F0F0FF;}
+    body{background:#FF6D00;font-family:'DM Sans',sans-serif;color:#F0F0FF;}
     input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
     input[type=number]{-moz-appearance:textfield;}
     input::placeholder{color:#2A2A50;}
@@ -27,12 +27,12 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useMemo,useRef}=React;
-const C={bg:"#0D0D1A",sur:"#13132A",alt:"#1A1A30",bdr:"#2A2A50",pur:"#8B5CF6",pdim:"#7C3AED",pbg:"rgba(139,92,246,0.08)",txt:"#F0F0FF",mut:"#9B9BC4",sub:"#4A4A78",grn:"#22c55e",red:"#EF4444",yel:"#F59E0B",wht:"#FFFFFF"};
+const C={bg:"#FF6D00",sur:"#FF8124",alt:"#FF9440",bdr:"#FFB87A",pur:"#FFFFFF",pdim:"#FFE8D0",pbg:"rgba(255,255,255,0.15)",txt:"#FFFFFF",mut:"#FFD4A8",sub:"#FFB87A",grn:"#4ADE80",red:"#FF4444",yel:"#FFE066",wht:"#FFFFFF"};
 const f$=v=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:2}).format(v||0);
 const fp=(v,d=3)=>(!v||isNaN(v)||!isFinite(v))?"—":`${Number(v).toFixed(d)}%`;
 const n=v=>parseFloat(v)||0;
 
-const MCC={avgRate:2.1,note:"Visa/MC typically charge ~1.43–1.58% interchange for MCC 5311 consumer cards. Debit cards run lower (~0.05% + $0.21 regulated). Effective rate above 2.5% likely means high markup or tiered pricing."};
+const MCC={avgRate:2.5,note:"Visa/MC typically charge ~1.43–1.58% interchange for MCC 5812 consumer cards. Debit cards run lower (~0.05% + $0.21 regulated). Effective rate above 2.5% likely means high markup or tiered pricing. Typical restaurant effective rates run 2.0-2.8%."};
 
 function rateColor(r){
   if(!r||r===0)return C.mut;
@@ -83,7 +83,7 @@ function Fld({label,pre,suf,val,set,hint}){
   return(
     <div style={{marginBottom:"0.85rem"}}>
       {label&&<p style={{margin:"0 0 4px",fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>{label}</p>}
-      <div style={{display:"flex",alignItems:"center",background:C.bg,border:`1px solid ${foc?C.pur+"80":C.bdr}`,borderRadius:6,overflow:"hidden",transition:"border-color 0.2s"}}>
+      <div style={{display:"flex",alignItems:"center",background:"#FFFFFF",border:`1px solid ${foc?C.pur+"80":C.bdr}`,borderRadius:6,overflow:"hidden",transition:"border-color 0.2s"}}>
         {pre&&<span style={{padding:"0 8px",color:C.sub,fontSize:"0.8rem",fontFamily:"monospace"}}>{pre}</span>}
         <input type="number" min="0" step="any" value={val} onChange={e=>set&&set(e.target.value)}
           onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)} placeholder="0"
@@ -96,8 +96,8 @@ function Fld({label,pre,suf,val,set,hint}){
 }
 
 const KPI=({label,val,sub,accent,hero,color})=>(
-  <div style={{background:accent?"linear-gradient(135deg,#3b1f8c,#1e0e5c)":C.alt,border:`1px solid ${accent?C.pur+"50":C.bdr}`,borderRadius:10,padding:hero?"1.3rem":"0.9rem",position:"relative",overflow:"hidden"}}>
-    {accent&&<div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(139,92,246,0.07)"}}/>}
+  <div style={{background:accent?"linear-gradient(135deg,#FF8124,#FF6D00)":C.alt,border:`1px solid ${accent?C.pur+"50":C.bdr}`,borderRadius:10,padding:hero?"1.3rem":"0.9rem",position:"relative",overflow:"hidden"}}>
+    {accent&&<div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,109,0,0.07)"}}/>}
     <p style={{margin:0,fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:accent?C.pur+"cc":C.mut}}>{label}</p>
     <p style={{margin:"4px 0 0",fontSize:hero?"1.8rem":"1.2rem",fontWeight:800,color:color||(accent?C.pur:C.txt),fontFamily:"'DM Mono',monospace",lineHeight:1}}>{val}</p>
     {sub&&<p style={{margin:"3px 0 0",fontSize:"0.65rem",color:accent?C.pur+"99":C.sub}}>{sub}</p>}
@@ -202,27 +202,58 @@ function StatementPanel({stmt,index,onChange,onRemove}){
   const calc=calcS(stmt);
   const set=key=>val=>onChange({[key]:val});
 
+  const applyResult=(r,fname)=>{
+    const u={fname};
+    if(r.totalVolume)u.vol=String(r.totalVolume);
+    if(r.transactionCount)u.txn=String(r.transactionCount);
+    if(r.discountFees)u.disc=String(r.discountFees);
+    if(r.transactionFees)u.txnf=String(r.transactionFees);
+    if(r.monthlyFees)u.mnth=String(r.monthlyFees);
+    if(r.chargebackFees)u.cb=String(r.chargebackFees);
+    if(r.otherFees)u.oth=String(r.otherFees);
+    if(r.pricingModel&&r.pricingModel!=="unknown")u.pm=r.pricingModel;
+    if(r.icMarkupPct)u.icp=String(r.icMarkupPct);
+    if(r.icMarkupPerTxn)u.icpt=String(r.icMarkupPerTxn);
+    if(r.notes)u.notes=r.notes;
+    onChange(u);
+  };
+
   const processFile=async(file)=>{
     if(!file)return;
-    const ok=["application/pdf","image/png","image/jpeg","image/jpg","image/webp"];
-    if(!ok.includes(file.type)){setErr("Upload a PDF or image (PNG, JPG, WEBP).");return;}
+    const ok=["application/pdf","image/png","image/jpeg","image/jpg","image/webp","text/csv","application/vnd.ms-excel","text/plain"];
+    const isCSV=file.name.endsWith(".csv")||file.type==="text/csv"||file.type==="application/vnd.ms-excel";
+    const isPDF=file.type==="application/pdf";
+    const isImg=file.type.startsWith("image/");
+    if(!isCSV&&!isPDF&&!isImg){setErr("Upload a PDF, image (PNG, JPG), or CSV file.");return;}
     setErr("");setLoading(true);
     try{
-      const b64=await toB64(file);
-      const r=await parseAI(b64,file.type);
-      const u={fname:file.name};
-      if(r.totalVolume)u.vol=String(r.totalVolume);
-      if(r.transactionCount)u.txn=String(r.transactionCount);
-      if(r.discountFees)u.disc=String(r.discountFees);
-      if(r.transactionFees)u.txnf=String(r.transactionFees);
-      if(r.monthlyFees)u.mnth=String(r.monthlyFees);
-      if(r.chargebackFees)u.cb=String(r.chargebackFees);
-      if(r.otherFees)u.oth=String(r.otherFees);
-      if(r.pricingModel&&r.pricingModel!=="unknown")u.pm=r.pricingModel;
-      if(r.icMarkupPct)u.icp=String(r.icMarkupPct);
-      if(r.icMarkupPerTxn)u.icpt=String(r.icMarkupPerTxn);
-      if(r.notes)u.notes=r.notes;
-      onChange(u);
+      if(isCSV){
+        // CSV — read as text, send to AI
+        const csvText=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsText(file);});
+        const resp=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csvText})});
+        const txt=await resp.text();
+        if(!resp.ok)throw new Error(txt);
+        const r=JSON.parse(txt);
+        applyResult(r,file.name);
+      } else if(isPDF){
+        // PDF — check size, warn if too large
+        if(file.size>3.5*1024*1024){
+          setErr("PDF is too large ("+Math.round(file.size/1024/1024)+"MB). Please take a screenshot of the fees page (Command+Shift+4) and upload that instead, or export as CSV.");
+          setLoading(false);return;
+        }
+        const b64=await toB64(file);
+        const resp=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileBase64:b64,mimeType:file.type})});
+        const txt=await resp.text();
+        if(!resp.ok)throw new Error(txt);
+        applyResult(JSON.parse(txt),file.name);
+      } else {
+        // Image
+        const b64=await toB64(file);
+        const resp=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileBase64:b64,mimeType:file.type})});
+        const txt=await resp.text();
+        if(!resp.ok)throw new Error(txt);
+        applyResult(JSON.parse(txt),file.name);
+      }
     }catch(e){setErr("Error: "+e.message);}
     finally{setLoading(false);}
   };
@@ -250,7 +281,7 @@ function StatementPanel({stmt,index,onChange,onRemove}){
           onDrop={e=>{e.preventDefault();setDrag(false);processFile(e.dataTransfer.files[0]);}}
           onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)}
           style={{border:`2px dashed ${drag?C.pur:loading?C.pur+"60":C.bdr}`,borderRadius:10,padding:"1rem",textAlign:"center",background:drag?C.pbg:"transparent",cursor:"pointer",marginBottom:"1rem",transition:"all 0.2s"}}>
-          <input ref={fileRef} type="file" accept=".pdf,image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
+          <input ref={fileRef} type="file" accept=".pdf,.csv,image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
           {loading?(
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               <div style={{width:16,height:16,border:`2px solid ${C.pur}30`,borderTop:`2px solid ${C.pur}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
@@ -265,7 +296,7 @@ function StatementPanel({stmt,index,onChange,onRemove}){
             <div>
               <div style={{fontSize:"1.4rem",marginBottom:6}}>📄</div>
               <p style={{margin:0,fontSize:"0.75rem",color:C.txt,fontWeight:700}}>Upload Merchant Statement</p>
-              <p style={{margin:"4px 0 0",fontSize:"0.68rem",color:C.mut}}>Drag & drop or click — PDF, PNG, JPG</p>
+              <p style={{margin:"4px 0 0",fontSize:"0.68rem",color:C.mut}}>PDF (under 3.5mb), CSV, PNG, or JPG</p>
               <div style={{marginTop:8,display:"inline-block",background:C.pbg,border:`1px solid ${C.pur}40`,borderRadius:7,padding:"5px 14px",fontSize:"0.72rem",fontWeight:700,color:C.pur}}>Choose File</div>
             </div>
           )}
@@ -337,8 +368,8 @@ function StatementPanel({stmt,index,onChange,onRemove}){
             {/* Fee bars */}
             <div style={{background:C.alt,borderRadius:10,padding:"0.9rem",marginBottom:"0.6rem"}}>
               <p style={{margin:"0 0 0.7rem",fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>Fee Breakdown</p>
-              <Bar label="Discount / Interchange" val={calc.d} total={calc.tot} color="#8B5CF6"/>
-              <Bar label="Per-Transaction Fees" val={calc.tf} total={calc.tot} color="#A78BFA"/>
+              <Bar label="Discount / Interchange" val={calc.d} total={calc.tot} color="#FF6D00"/>
+              <Bar label="Per-Transaction Fees" val={calc.tf} total={calc.tot} color="#FF8C3A"/>
               <Bar label="Monthly Fixed Fees" val={calc.m} total={calc.tot} color="#60A5FA"/>
               <Bar label="Chargeback Fees" val={calc.c} total={calc.tot} color="#F472B6"/>
               <Bar label="Other Fees" val={calc.o} total={calc.tot} color="#94A3B8"/>
@@ -346,7 +377,7 @@ function StatementPanel({stmt,index,onChange,onRemove}){
             {/* MCC benchmark */}
             <div style={{background:C.alt,borderRadius:10,padding:"0.9rem",cursor:"pointer"}} onClick={()=>setShowMCC(!showMCC)}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                <span style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>🏬 vs. MCC 5311 Benchmark</span>
+                <span style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>🏬 vs. MCC 5812 Benchmark</span>
                 <span style={{fontSize:"0.65rem",color:C.sub}}>{showMCC?"▲":"▼"}</span>
               </div>
               <div style={{position:"relative",height:5,background:C.bdr,borderRadius:3,marginBottom:5}}>
@@ -360,7 +391,7 @@ function StatementPanel({stmt,index,onChange,onRemove}){
               {calc.er>MCC.avgRate&&<p style={{marginTop:"0.4rem",fontSize:"0.67rem",color:"#FB923C"}}>⚠️ {fp(calc.er-MCC.avgRate,2)} above benchmark — ~{f$((calc.er-MCC.avgRate)/100*calc.v)}/mo potential overcharge</p>}
               {showMCC&&(
                 <div className="fade" style={{marginTop:"0.7rem",paddingTop:"0.7rem",borderTop:`1px solid ${C.bdr}`}}>
-                  <p style={{margin:"0 0 6px",fontSize:"0.68rem",fontWeight:700,color:C.txt}}>MCC 5311 Interchange Benchmarks:</p>
+                  <p style={{margin:"0 0 6px",fontSize:"0.68rem",fontWeight:700,color:C.txt}}>MCC 5812 Interchange Benchmarks:</p>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem"}}>
                     {[["Visa Consumer Credit","1.43–1.58% + $0.10"],["Visa Debit (regulated)","0.05% + $0.21"],["MC Consumer Credit","1.48–1.58% + $0.10"],["MC Debit (regulated)","0.05% + $0.21"],["Visa Debit (unreg.)","0.80% + $0.15"],["Amex OptBlue","1.35–2.40% + varies"]].map(([name,rate])=>(
                       <div key={name} style={{background:C.bg,borderRadius:6,padding:"0.4rem 0.6rem"}}>
@@ -425,22 +456,25 @@ function App(){
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem",marginBottom:"1.8rem"}}>
           <div>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"0.8rem"}}>
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <rect width="28" height="28" rx="7" fill={C.pur}/>
-                <path d="M7 8l7 12 7-12" stroke="#0D0D1A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span style={{fontSize:"1.15rem",fontWeight:800,color:C.wht}}>vori</span>
-              <span style={{width:1,height:16,background:C.bdr}}/>
+              {/* Toast logo — bread icon + wordmark */}
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                  <path d="M8 14 C8 9 13 6 18 6 C23 6 28 9 28 14 L28 16 C28 16 26 15 24 16 C22 17 20 16 18 16 C16 16 14 17 12 16 C10 15 8 16 8 16 Z" fill="white"/>
+                  <rect x="8" y="16" width="20" height="14" rx="2" fill="white"/>
+                </svg>
+                <span style={{fontSize:"1.5rem",fontWeight:800,color:"#FFFFFF",letterSpacing:"-0.03em",fontFamily:"'DM Sans',sans-serif"}}>toast</span>
+              </div>
+              <span style={{width:1,height:16,background:"rgba(255,255,255,0.4)"}}/>
               <span style={{fontSize:"0.72rem",color:C.mut}}>Payments Analyzer</span>
             </div>
-            <span style={{display:"inline-flex",alignItems:"center",gap:6,background:C.pbg,border:`1px solid ${C.pdim}40`,borderRadius:100,padding:"3px 12px",fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.pur}}>✦ Merchant Statement Intelligence</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:6,background:C.pbg,border:`1px solid ${C.pdim}40`,borderRadius:100,padding:"3px 12px",fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.pur}}>🍽️ Restaurant Statement Intelligence</span>
             <h1 style={{margin:"0.6rem 0 0.3rem",fontSize:"clamp(1.6rem,3.5vw,2.4rem)",fontWeight:800,lineHeight:1.08,letterSpacing:"-0.02em"}}>
               Uncover Your True<br/><span style={{color:C.pur}}>Processing Cost</span>
             </h1>
             <p style={{margin:0,color:C.mut,fontSize:"0.85rem"}}>Upload statements — AI extracts every fee. Compare months, spot overcharges.</p>
           </div>
           {totals&&totals.er>0&&(
-            <div style={{background:C.sur,border:`1.5px solid ${rateColor(totals.er)}40`,borderRadius:14,padding:"1rem 1.3rem",textAlign:"center",minWidth:150}}>
+            <div style={{background:"rgba(255,255,255,0.9)",border:`1.5px solid ${rateColor(totals.er)}`,borderRadius:14,padding:"1rem 1.3rem",textAlign:"center",minWidth:150}}>
               <p style={{margin:0,fontSize:"0.58rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.mut}}>{multi?"Blended ":""}Effective Rate</p>
               <p style={{margin:"4px 0 2px",fontSize:"1.9rem",fontWeight:800,fontFamily:"monospace",color:rateColor(totals.er),lineHeight:1}}>{fp(totals.er)}</p>
               <p style={{margin:0,fontSize:"0.7rem",color:rateColor(totals.er)}}>{rateLabel(totals.er)}</p>
@@ -554,8 +588,8 @@ function App(){
                     {/* Fee breakdown */}
                     <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem"}}>
                       <SH icon="📋" title={multi?"Fee Breakdown — All Periods":"Fee Breakdown"}/>
-                      <Bar label="Discount / Interchange" val={totals.d} total={totals.tot} color="#8B5CF6"/>
-                      <Bar label="Per-Transaction Fees" val={totals.tf} total={totals.tot} color="#A78BFA"/>
+                      <Bar label="Discount / Interchange" val={totals.d} total={totals.tot} color="#FF6D00"/>
+                      <Bar label="Per-Transaction Fees" val={totals.tf} total={totals.tot} color="#FF8C3A"/>
                       <Bar label="Monthly Fixed Fees" val={totals.m} total={totals.tot} color="#60A5FA"/>
                       <Bar label="Chargeback Fees" val={totals.c} total={totals.tot} color="#F472B6"/>
                       <Bar label="Other Fees" val={totals.o} total={totals.tot} color="#94A3B8"/>
@@ -593,7 +627,7 @@ function App(){
         )}
 
         <p style={{textAlign:"center",marginTop:"2rem",fontSize:"0.6rem",color:C.sub}}>
-          MCC 5311 · Effective rate = total fees ÷ total volume · Vori Payments Intelligence
+          MCC 5812 · Effective rate = total fees ÷ total volume · Toast Payments Intelligence
         </p>
       </div>
     </div>
