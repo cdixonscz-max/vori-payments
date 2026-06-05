@@ -3,631 +3,469 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Toast Payments Analyzer</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <title>Toast Payments Savings Calculator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-    body{background:#FF6D00;font-family:'DM Sans',sans-serif;color:#F0F0FF;}
+    body{background:#F5F5F5;font-family:'Inter',sans-serif;color:#1A1A1A;}
     input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
     input[type=number]{-moz-appearance:textfield;}
-    input::placeholder{color:#2A2A50;}
+    input::placeholder{color:#BBBBBB;}
     @keyframes spin{to{transform:rotate(360deg);}}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-    .fade{animation:fadeIn 0.3s ease;}
-    ::-webkit-scrollbar{width:6px;height:6px;}
-    ::-webkit-scrollbar-track{background:#13132A;}
-    ::-webkit-scrollbar-thumb{background:#2A2A50;border-radius:3px;}
-    @media(max-width:700px){.two-col{grid-template-columns:1fr!important;}.three-col{grid-template-columns:1fr 1fr!important;}}
+    @keyframes pop{0%{transform:scale(0.97);opacity:0;}100%{transform:scale(1);opacity:1;}}
+    .pop{animation:pop 0.25s ease;}
   </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useMemo,useRef}=React;
-const C={bg:"#FF6D00",sur:"#FF8124",alt:"#FF9440",bdr:"#FFB87A",pur:"#FFFFFF",pdim:"#FFE8D0",pbg:"rgba(255,255,255,0.15)",txt:"#FFFFFF",mut:"#FFD4A8",sub:"#FFB87A",grn:"#4ADE80",red:"#FF4444",yel:"#FFE066",wht:"#FFFFFF"};
-const f$=v=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:2}).format(v||0);
-const fp=(v,d=3)=>(!v||isNaN(v)||!isFinite(v))?"—":`${Number(v).toFixed(d)}%`;
+const {useState,useMemo,useRef,useEffect}=React;
+const OR="#FF6D00";
+const STORAGE_KEY="toast_analyzer_apikey";
+
+const f$=v=>v==null||isNaN(v)?"—":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:0,maximumFractionDigits:0}).format(v);
+const f$c=v=>v==null||isNaN(v)?"—":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:2}).format(v);
+const fp=(v,d=2)=>(!v||isNaN(v)||!isFinite(v))?"—":`${Number(v).toFixed(d)}%`;
 const n=v=>parseFloat(v)||0;
 
-const MCC={avgRate:2.5,note:"Visa/MC typically charge ~1.43–1.58% interchange for MCC 5812 consumer cards. Debit cards run lower (~0.05% + $0.21 regulated). Effective rate above 2.5% likely means high markup or tiered pricing. Typical restaurant effective rates run 2.0-2.8%."};
-
 function rateColor(r){
-  if(!r||r===0)return C.mut;
-  if(r<1.8)return"#4ADE80";
-  if(r<2.2)return"#86EFAC";
-  if(r<2.8)return C.yel;
-  if(r<3.5)return"#FB923C";
-  return C.red;
+  if(!r)return"#999";
+  if(r<2.0)return"#16a34a";
+  if(r<2.5)return"#65a30d";
+  if(r<3.0)return"#d97706";
+  if(r<3.8)return"#ea580c";
+  return"#dc2626";
 }
 function rateLabel(r){
-  if(!r||r===0)return"—";
-  if(r<1.8)return"Excellent ✦";
-  if(r<2.2)return"Good";
-  if(r<2.8)return"Average";
-  if(r<3.5)return"High ⚠";
-  return"Very High ⛔";
-}
-
-function calcS(s){
-  const v=n(s.vol),t=n(s.txn),d=n(s.disc),tf=n(s.txnf),m=n(s.mnth),c=n(s.cb),o=n(s.oth);
-  const tot=d+tf+m+c+o,proc=d+tf,fix=m+c+o;
-  const er=v>0?(tot/v)*100:0,pr=v>0?(proc/v)*100:0;
-  const cpt=t>0?tot/t:0,avg=t>0&&v>0?v/t:0;
-  return{v,t,tot,proc,fix,er,pr,cpt,avg,d,tf,m,c,o};
-}
-
-async function parseAI(b64,mime){
-  const res=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileBase64:b64,mimeType:mime})});
-  const text=await res.text();
-  if(!res.ok)throw new Error(text);
-  try{return JSON.parse(text);}catch(e){throw new Error("Invalid response: "+text.substring(0,200));}
+  if(!r)return"";
+  if(r<2.0)return"Excellent";
+  if(r<2.5)return"Good";
+  if(r<3.0)return"Average";
+  if(r<3.8)return"High — room to save";
+  return"Very High — significant savings available";
 }
 
 async function toB64(file){
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});
 }
 
-// ---- UI primitives ----
-const SH=({icon,title})=>(
-  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:"0.9rem",paddingBottom:"0.5rem",borderBottom:`1px solid ${C.bdr}`}}>
-    <span style={{fontSize:"0.82rem"}}>{icon}</span>
-    <h3 style={{margin:0,fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.mut}}>{title}</h3>
-  </div>
-);
+async function callClaude(apiKey, messages){
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({ model: "claude-opus-4-5", max_tokens: 1024, messages })
+  });
+  if(!resp.ok){ const e=await resp.text(); throw new Error(e); }
+  const data = await resp.json();
+  const text = (data.content?.[0]?.text||"").replace(/```json|```/g,"").trim();
+  try{ return JSON.parse(text); }
+  catch(e){ throw new Error("Could not parse AI response: "+text.substring(0,200)); }
+}
 
-function Fld({label,pre,suf,val,set,hint}){
+function Field({label,pre,suf,val,set,hint,large,placeholder,type="number"}){
   const[foc,setFoc]=useState(false);
   return(
-    <div style={{marginBottom:"0.85rem"}}>
-      {label&&<p style={{margin:"0 0 4px",fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>{label}</p>}
-      <div style={{display:"flex",alignItems:"center",background:"#FFFFFF",border:`1px solid ${foc?C.pur+"80":C.bdr}`,borderRadius:6,overflow:"hidden",transition:"border-color 0.2s"}}>
-        {pre&&<span style={{padding:"0 8px",color:C.sub,fontSize:"0.8rem",fontFamily:"monospace"}}>{pre}</span>}
-        <input type="number" min="0" step="any" value={val} onChange={e=>set&&set(e.target.value)}
-          onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)} placeholder="0"
-          style={{flex:1,background:"transparent",border:"none",outline:"none",color:C.txt,fontSize:"0.88rem",fontFamily:"'DM Mono',monospace",padding:"8px 6px"}}/>
-        {suf&&<span style={{padding:"0 8px",color:C.sub,fontSize:"0.78rem"}}>{suf}</span>}
+    <div style={{marginBottom:"0.9rem"}}>
+      {label&&<p style={{margin:"0 0 5px",fontSize:"0.72rem",fontWeight:600,color:"#666",textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</p>}
+      <div style={{display:"flex",alignItems:"center",background:"#fff",border:`2px solid ${foc?OR:"#E0E0E0"}`,borderRadius:8,overflow:"hidden",transition:"border-color 0.15s",boxShadow:foc?`0 0 0 3px ${OR}20`:"none"}}>
+        {pre&&<span style={{padding:"0 10px",color:"#999",fontSize:"0.9rem",fontWeight:500,borderRight:"1px solid #F0F0F0",background:"#FAFAFA",alignSelf:"stretch",display:"flex",alignItems:"center"}}>{pre}</span>}
+        <input type={type} min="0" step="any" value={val} onChange={e=>set&&set(e.target.value)}
+          onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)} placeholder={placeholder||"0"}
+          style={{flex:1,background:"transparent",border:"none",outline:"none",color:"#1A1A1A",fontSize:large?"1.05rem":"0.95rem",fontFamily:type==="number"?"'DM Mono',monospace":"Inter,sans-serif",padding:large?"12px 14px":"10px 12px",fontWeight:large?600:400}}/>
+        {suf&&<span style={{padding:"0 10px",color:"#999",fontSize:"0.9rem",borderLeft:"1px solid #F0F0F0",background:"#FAFAFA",alignSelf:"stretch",display:"flex",alignItems:"center"}}>{suf}</span>}
       </div>
-      {hint&&<p style={{margin:"2px 0 0",fontSize:"0.62rem",color:C.sub}}>{hint}</p>}
+      {hint&&<p style={{margin:"3px 0 0",fontSize:"0.7rem",color:"#AAA"}}>{hint}</p>}
     </div>
   );
 }
 
-const KPI=({label,val,sub,accent,hero,color})=>(
-  <div style={{background:accent?"linear-gradient(135deg,#FF8124,#FF6D00)":C.alt,border:`1px solid ${accent?C.pur+"50":C.bdr}`,borderRadius:10,padding:hero?"1.3rem":"0.9rem",position:"relative",overflow:"hidden"}}>
-    {accent&&<div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,109,0,0.07)"}}/>}
-    <p style={{margin:0,fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:accent?C.pur+"cc":C.mut}}>{label}</p>
-    <p style={{margin:"4px 0 0",fontSize:hero?"1.8rem":"1.2rem",fontWeight:800,color:color||(accent?C.pur:C.txt),fontFamily:"'DM Mono',monospace",lineHeight:1}}>{val}</p>
-    {sub&&<p style={{margin:"3px 0 0",fontSize:"0.65rem",color:accent?C.pur+"99":C.sub}}>{sub}</p>}
-  </div>
-);
-
-function Bar({label,val,total,color}){
-  const pct=total>0?(val/total)*100:0;
-  return(
-    <div style={{marginBottom:"0.75rem"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-        <span style={{fontSize:"0.71rem",color:C.mut}}>{label}</span>
-        <div style={{display:"flex",gap:12}}>
-          <span style={{fontSize:"0.71rem",color:C.sub}}>{val>0?`${pct.toFixed(1)}%`:"—"}</span>
-          <span style={{fontSize:"0.71rem",fontFamily:"monospace",color:C.txt,minWidth:68,textAlign:"right"}}>{val>0?f$(val):"—"}</span>
-        </div>
-      </div>
-      <div style={{height:4,background:C.bdr,borderRadius:2,overflow:"hidden"}}>
-        <div style={{width:`${Math.min(pct,100)}%`,height:"100%",background:color,borderRadius:2,transition:"width 0.5s ease"}}/>
-      </div>
-    </div>
-  );
+function Card({children,style={}}){
+  return <div style={{background:"#fff",border:"1px solid #E5E5E5",borderRadius:12,padding:"1.25rem",marginBottom:"1rem",...style}}>{children}</div>;
 }
 
-function TrendChart({statements}){
-  const valid=statements.filter(s=>n(s.vol)>0);
-  if(valid.length<2)return null;
-  const maxRate=Math.max(...valid.map(s=>calcS(s).er));
-  return(
-    <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem",marginBottom:"1.2rem"}}>
-      <SH icon="📈" title="Effective Rate Trend"/>
-      <div style={{display:"flex",alignItems:"flex-end",gap:8,height:90}}>
-        {valid.map((s,i)=>{
-          const{er}=calcS(s);
-          const pct=maxRate>0?(er/maxRate)*100:0;
-          const col=rateColor(er);
-          return(
-            <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-              <span style={{fontSize:"0.6rem",color:col,fontFamily:"monospace"}}>{fp(er,2)}</span>
-              <div style={{width:"100%",background:col+"30",borderRadius:"4px 4px 0 0",height:`${Math.max(pct,8)}%`,borderBottom:`2px solid ${col}`}}/>
-              <span style={{fontSize:"0.6rem",color:C.sub,whiteSpace:"nowrap"}}>{s.label||`S${i+1}`}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+function STitle({children}){
+  return <p style={{margin:"0 0 1rem",fontSize:"0.72rem",fontWeight:700,color:"#999",textTransform:"uppercase",letterSpacing:"0.08em",paddingBottom:"0.6rem",borderBottom:"1px solid #F0F0F0"}}>{children}</p>;
 }
 
-function CompareTable({statements}){
-  const valid=statements.filter(s=>n(s.vol)>0);
-  if(valid.length<2)return null;
-  const rows=[
-    {label:"Volume",fn:s=>f$(calcS(s).v)},
-    {label:"Transactions",fn:s=>calcS(s).t>0?calcS(s).t.toLocaleString():"—"},
-    {label:"Total Fees",fn:s=>f$(calcS(s).tot)},
-    {label:"Effective Rate",fn:s=>fp(calcS(s).er),hi:true},
-    {label:"Processing Rate",fn:s=>fp(calcS(s).pr)},
-    {label:"Cost Per Txn",fn:s=>calcS(s).cpt>0?f$(calcS(s).cpt):"—"},
-    {label:"Avg Ticket",fn:s=>calcS(s).avg>0?f$(calcS(s).avg):"—"},
-    {label:"Discount Fees",fn:s=>f$(calcS(s).d)},
-    {label:"Per-Txn Fees",fn:s=>f$(calcS(s).tf)},
-    {label:"Monthly Fees",fn:s=>f$(calcS(s).m)},
-    {label:"Chargeback Fees",fn:s=>f$(calcS(s).c)},
-  ];
-  return(
-    <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem",marginBottom:"1.2rem",overflowX:"auto"}}>
-      <SH icon="🔀" title="Statement Comparison"/>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.74rem"}}>
-        <thead>
-          <tr>
-            <th style={{textAlign:"left",padding:"6px 8px",color:C.mut,fontWeight:600,borderBottom:`1px solid ${C.bdr}`}}>Metric</th>
-            {valid.map((s,i)=>(
-              <th key={i} style={{textAlign:"right",padding:"6px 8px",color:C.pur,fontWeight:700,borderBottom:`1px solid ${C.bdr}`,whiteSpace:"nowrap"}}>{s.label||`Statement ${i+1}`}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row,ri)=>{
-            const vals=valid.map(s=>row.fn(s));
-            return(
-              <tr key={ri} style={{background:ri%2===0?"transparent":C.alt+"60"}}>
-                <td style={{padding:"6px 8px",color:C.mut}}>{row.label}</td>
-                {vals.map((v,vi)=>(
-                  <td key={vi} style={{textAlign:"right",padding:"6px 8px",fontFamily:"monospace",color:row.hi?rateColor(calcS(valid[vi]).er):C.txt,fontWeight:row.hi?700:400}}>{v}</td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+function App(){
+  const[apiKey,setApiKey]=useState(()=>localStorage.getItem(STORAGE_KEY)||"");
+  const[showKey,setShowKey]=useState(false);
+  const[keyInput,setKeyInput]=useState("");
 
-function StatementPanel({stmt,index,onChange,onRemove}){
+  const[vol,setVol]=useState("");
+  const[txn,setTxn]=useState("");
+  const[disc,setDisc]=useState("");
+  const[txnf,setTxnf]=useState("");
+  const[mnth,setMnth]=useState("");
+  const[cb,setCb]=useState("");
+  const[oth,setOth]=useState("");
+  const[processor,setProcessor]=useState("");
+
+  const[toastRate,setToastRate]=useState("");
+  const[toastPer,setToastPer]=useState("");
+  const[toastMnth,setToastMnth]=useState("");
+
   const[loading,setLoading]=useState(false);
   const[err,setErr]=useState("");
+  const[fname,setFname]=useState("");
+  const[notes,setNotes]=useState("");
   const[drag,setDrag]=useState(false);
-  const[showMCC,setShowMCC]=useState(false);
   const fileRef=useRef();
-  const calc=calcS(stmt);
-  const set=key=>val=>onChange({[key]:val});
 
-  const applyResult=(r,fname)=>{
-    const u={fname};
-    if(r.totalVolume)u.vol=String(r.totalVolume);
-    if(r.transactionCount)u.txn=String(r.transactionCount);
-    if(r.discountFees)u.disc=String(r.discountFees);
-    if(r.transactionFees)u.txnf=String(r.transactionFees);
-    if(r.monthlyFees)u.mnth=String(r.monthlyFees);
-    if(r.chargebackFees)u.cb=String(r.chargebackFees);
-    if(r.otherFees)u.oth=String(r.otherFees);
-    if(r.pricingModel&&r.pricingModel!=="unknown")u.pm=r.pricingModel;
-    if(r.icMarkupPct)u.icp=String(r.icMarkupPct);
-    if(r.icMarkupPerTxn)u.icpt=String(r.icMarkupPerTxn);
-    if(r.notes)u.notes=r.notes;
-    onChange(u);
+  const saveKey=()=>{
+    localStorage.setItem(STORAGE_KEY,keyInput);
+    setApiKey(keyInput);
+    setShowKey(false);
+    setKeyInput("");
+  };
+
+  const v=n(vol),t=n(txn);
+  const totalFees=n(disc)+n(txnf)+n(mnth)+n(cb)+n(oth);
+  const effectiveRate=v>0?(totalFees/v)*100:0;
+  const costPerTxn=t>0?totalFees/t:0;
+  const avgTicket=v>0&&t>0?v/t:0;
+
+  const toastMonthlyCost=useMemo(()=>{
+    if(!v||!n(toastRate))return null;
+    return(v*n(toastRate)/100)+(t*n(toastPer))+n(toastMnth);
+  },[v,t,toastRate,toastPer,toastMnth]);
+
+  const toastRateEff=toastMonthlyCost&&v>0?(toastMonthlyCost/v)*100:0;
+  const monthlySavings=toastMonthlyCost!=null?totalFees-toastMonthlyCost:null;
+  const annualSavings=monthlySavings!=null?monthlySavings*12:null;
+  const saving=monthlySavings!=null&&monthlySavings>0;
+
+  const applyResult=(r,fn)=>{
+    setFname(fn);
+    const getV=(...keys)=>{for(const k of keys){if(r[k]!=null&&r[k]!==0)return r[k];}return null;};
+    const vol=getV("totalVolume","total_volume","volume","grossVolume","netSales","totalSales");
+    const txn=getV("transactionCount","transaction_count","transactions","totalTransactions");
+    const disc=getV("discountFees","discount_fees","discountAmount","interchange","interchangeFees");
+    const txnf=getV("transactionFees","transaction_fees","perTransactionFees","authFees","perItemFees");
+    const mnth=getV("monthlyFees","monthly_fees","fixedFees","statementFee","serviceFees");
+    const cb=getV("chargebackFees","chargeback_fees","disputeFees");
+    const oth=getV("otherFees","other_fees","miscFees");
+    if(vol)setVol(String(Math.round(vol*100)/100));
+    if(txn)setTxn(String(Math.round(txn)));
+    if(disc)setDisc(String(Math.round(disc*100)/100));
+    if(txnf)setTxnf(String(Math.round(txnf*100)/100));
+    if(mnth)setMnth(String(Math.round(mnth*100)/100));
+    if(cb)setCb(String(Math.round(cb*100)/100));
+    if(oth)setOth(String(Math.round(oth*100)/100));
+    if(r.notes)setNotes(r.notes);
   };
 
   const processFile=async(file)=>{
     if(!file)return;
-    const ok=["application/pdf","image/png","image/jpeg","image/jpg","image/webp","text/csv","application/vnd.ms-excel","text/plain"];
-    const isCSV=file.name.endsWith(".csv")||file.type==="text/csv"||file.type==="application/vnd.ms-excel";
+    if(!apiKey){setErr("Please add your Anthropic API key first — click the 🔑 button in the top right.");return;}
+    const isCSV=file.name.endsWith(".csv")||file.type==="text/csv";
     const isPDF=file.type==="application/pdf";
     const isImg=file.type.startsWith("image/");
-    if(!isCSV&&!isPDF&&!isImg){setErr("Upload a PDF, image (PNG, JPG), or CSV file.");return;}
-    setErr("");setLoading(true);
+    if(!isCSV&&!isPDF&&!isImg){setErr("Please upload a PDF (under 3.5mb), image screenshot, or CSV.");return;}
+    setErr("");setLoading(true);setNotes("");
     try{
+      let messages;
+      const prompt=`You are an expert at reading FISERV, Toast, Square, Heartland merchant statements. Extract ALL fees and return ONLY valid JSON with no markdown:\n{"totalVolume":number,"transactionCount":number,"discountFees":number,"transactionFees":number,"monthlyFees":number,"chargebackFees":number,"otherFees":number,"notes":"brief summary"}\ntotalVolume = gross card sales volume (NOT fee amounts) — look for Net Sales, Total Sales, Total Volume\ntransactionCount = total number of transactions\ndiscountFees = all percentage-based fees (interchange, discount rate, assessments)\ntransactionFees = all per-transaction fees (auth fees, per-item fees)\nmonthlyFees = fixed monthly fees (statement, PCI, gateway)\nchargebackFees = chargeback and dispute fees\notherFees = any remaining fees`;
       if(isCSV){
-        // CSV — read as text, send to AI
         const csvText=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsText(file);});
-        const resp=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csvText})});
-        const txt=await resp.text();
-        if(!resp.ok)throw new Error(txt);
-        const r=JSON.parse(txt);
-        applyResult(r,file.name);
-      } else if(isPDF){
-        // PDF — check size, warn if too large
-        if(file.size>3.5*1024*1024){
-          setErr("PDF is too large ("+Math.round(file.size/1024/1024)+"MB). Please take a screenshot of the fees page (Command+Shift+4) and upload that instead, or export as CSV.");
-          setLoading(false);return;
-        }
-        const b64=await toB64(file);
-        const resp=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileBase64:b64,mimeType:file.type})});
-        const txt=await resp.text();
-        if(!resp.ok)throw new Error(txt);
-        applyResult(JSON.parse(txt),file.name);
+        messages=[{role:"user",content:`${prompt}\n\nCSV DATA:\n${csvText.substring(0,8000)}`}];
       } else {
-        // Image
+        if(isPDF&&file.size>3.5*1024*1024){setErr(`PDF is ${Math.round(file.size/1024/1024)}MB — too large. Press Command+Shift+4 to screenshot just the fees page, then upload that image.`);setLoading(false);return;}
         const b64=await toB64(file);
-        const resp=await fetch("/api/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileBase64:b64,mimeType:file.type})});
-        const txt=await resp.text();
-        if(!resp.ok)throw new Error(txt);
-        applyResult(JSON.parse(txt),file.name);
+        const contentBlock=isPDF
+          ?{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}}
+          :{type:"image",source:{type:"base64",media_type:file.type,data:b64}};
+        messages=[{role:"user",content:[contentBlock,{type:"text",text:prompt}]}];
       }
-    }catch(e){setErr("Error: "+e.message);}
+      const result=await callClaude(apiKey,messages);
+      applyResult(result,file.name);
+    }catch(e){
+      if(e.message.includes("401")||e.message.includes("invalid_api_key")){
+        setErr("Invalid API key — click 🔑 in the top right to update it.");
+      } else if(e.message.includes("credit")||e.message.includes("billing")){
+        setErr("Anthropic account out of credits — add credits at console.anthropic.com/settings/billing");
+      } else {
+        setErr("Error: "+e.message);
+      }
+    }
     finally{setLoading(false);}
   };
 
-  const rating={t:rateLabel(calc.er),c:rateColor(calc.er)};
+  const hasCurrent=totalFees>0&&v>0;
+  const hasToast=toastMonthlyCost!=null&&toastMonthlyCost>0;
 
   return(
-    <div className="fade" style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:16,overflow:"hidden"}}>
-      {/* Panel header */}
-      <div style={{background:C.alt,padding:"0.85rem 1.1rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{width:22,height:22,borderRadius:5,background:C.pbg,border:`1px solid ${C.pur}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.68rem",fontWeight:800,color:C.pur}}>{index+1}</div>
-          <input value={stmt.label||""} onChange={e=>onChange({label:e.target.value})} placeholder={`Statement ${index+1} — e.g. "Dec 2024"`}
-            style={{background:"transparent",border:"none",outline:"none",color:C.txt,fontSize:"0.82rem",fontWeight:600,minWidth:160}}/>
+    <div style={{minHeight:"100vh",background:"#F5F5F5",paddingBottom:"3rem"}}>
+
+      {/* NAV */}
+      <div style={{background:OR,padding:"0 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",height:60,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(255,109,0,0.35)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+            <path d="M5 12 C5 7 10 4 15 4 C20 4 25 7 25 12 L25 14 C23 13 21 14 19 15 C17 14 15 14 13 15 C11 14 9 13 7 14 L5 14 Z" fill="white"/>
+            <rect x="5" y="14" width="20" height="12" rx="2" fill="white"/>
+          </svg>
+          <span style={{fontSize:"1.2rem",fontWeight:900,color:"#fff",letterSpacing:"-0.02em"}}>toast</span>
+          <span style={{width:1,height:18,background:"rgba(255,255,255,0.3)",margin:"0 6px"}}/>
+          <span style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.9)",fontWeight:500}}>Payments Savings Calculator</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {calc.er>0&&<span style={{fontSize:"0.73rem",fontWeight:800,fontFamily:"monospace",color:rating.c}}>{fp(calc.er,2)} · {rating.t}</span>}
-          {onRemove&&<button onClick={onRemove} style={{background:"transparent",border:"none",cursor:"pointer",color:C.sub,fontSize:"0.8rem",padding:"2px 6px"}}>✕</button>}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {saving&&(
+            <div style={{background:"rgba(0,0,0,0.2)",borderRadius:8,padding:"5px 14px",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:"0.75rem",color:"rgba(255,255,255,0.85)"}}>Monthly Savings</span>
+              <span style={{fontSize:"1.05rem",fontWeight:900,fontFamily:"'DM Mono',monospace",color:"#fff"}}>{f$(monthlySavings)}</span>
+            </div>
+          )}
+          <button onClick={()=>setShowKey(!showKey)} title="Set API Key"
+            style={{background:"rgba(255,255,255,0.2)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:"#fff",fontSize:"0.85rem",display:"flex",alignItems:"center",gap:5}}>
+            🔑 {apiKey?"Key set":"Add key"}
+          </button>
         </div>
       </div>
 
-      <div style={{padding:"1.1rem"}}>
-        {/* Upload */}
-        <div onClick={()=>fileRef.current?.click()}
-          onDrop={e=>{e.preventDefault();setDrag(false);processFile(e.dataTransfer.files[0]);}}
-          onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)}
-          style={{border:`2px dashed ${drag?C.pur:loading?C.pur+"60":C.bdr}`,borderRadius:10,padding:"1rem",textAlign:"center",background:drag?C.pbg:"transparent",cursor:"pointer",marginBottom:"1rem",transition:"all 0.2s"}}>
-          <input ref={fileRef} type="file" accept=".pdf,.csv,image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
-          {loading?(
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              <div style={{width:16,height:16,border:`2px solid ${C.pur}30`,borderTop:`2px solid ${C.pur}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-              <span style={{fontSize:"0.75rem",color:C.pur,fontWeight:600}}>AI reading statement…</span>
-            </div>
-          ):stmt.fname?(
-            <div>
-              <p style={{margin:0,fontSize:"0.75rem",color:C.pur,fontWeight:700}}>✅ {stmt.fname}</p>
-              <p style={{margin:"3px 0 0",fontSize:"0.68rem",color:C.sub}}>Click to replace</p>
-            </div>
-          ):(
-            <div>
-              <div style={{fontSize:"1.4rem",marginBottom:6}}>📄</div>
-              <p style={{margin:0,fontSize:"0.75rem",color:C.txt,fontWeight:700}}>Upload Merchant Statement</p>
-              <p style={{margin:"4px 0 0",fontSize:"0.68rem",color:C.mut}}>PDF (under 3.5mb), CSV, PNG, or JPG</p>
-              <div style={{marginTop:8,display:"inline-block",background:C.pbg,border:`1px solid ${C.pur}40`,borderRadius:7,padding:"5px 14px",fontSize:"0.72rem",fontWeight:700,color:C.pur}}>Choose File</div>
-            </div>
-          )}
+      {/* API KEY PANEL */}
+      {showKey&&(
+        <div style={{background:"#1A1A1A",padding:"1rem 1.5rem",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:"0.8rem",color:"#AAA",whiteSpace:"nowrap"}}>Anthropic API Key:</span>
+          <input type="password" value={keyInput} onChange={e=>setKeyInput(e.target.value)} placeholder="sk-ant-..."
+            style={{flex:1,background:"#333",border:"1px solid #555",borderRadius:6,padding:"8px 12px",color:"#fff",fontSize:"0.85rem",fontFamily:"monospace"}}/>
+          <button onClick={saveKey} style={{background:OR,border:"none",borderRadius:6,padding:"8px 16px",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:"0.82rem"}}>Save</button>
+          <button onClick={()=>setShowKey(false)} style={{background:"transparent",border:"1px solid #555",borderRadius:6,padding:"8px 12px",color:"#AAA",cursor:"pointer",fontSize:"0.82rem"}}>Cancel</button>
+          <span style={{fontSize:"0.72rem",color:"#666"}}>Get key at console.anthropic.com/settings/keys · Saved in your browser only</span>
+        </div>
+      )}
+
+      <div style={{maxWidth:1060,margin:"0 auto",padding:"1.75rem 1rem"}}>
+
+        <div style={{marginBottom:"1.75rem"}}>
+          <h1 style={{margin:0,fontSize:"clamp(1.4rem,3vw,2rem)",fontWeight:900,color:"#1A1A1A",letterSpacing:"-0.025em"}}>See How Much You'd Save with Toast</h1>
+          <p style={{margin:"6px 0 0",fontSize:"0.9rem",color:"#777"}}>Upload your current merchant statement or enter fees manually — we'll calculate your exact savings.</p>
+          {!apiKey&&<div style={{marginTop:"0.75rem",background:"#FFF4EE",border:`1px solid ${OR}50`,borderRadius:8,padding:"0.6rem 1rem",fontSize:"0.78rem",color:"#7C2D12"}}>
+            👆 Click <strong>🔑 Add key</strong> in the top right to enable AI statement parsing — or enter fees manually below.
+          </div>}
         </div>
 
-        {err&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"0.6rem 0.8rem",marginBottom:"0.8rem",fontSize:"0.72rem",color:"#FCA5A5"}}>⚠️ {err}</div>}
-        {stmt.notes&&<div style={{background:C.pbg,border:`1px solid ${C.pur}25`,borderRadius:8,padding:"0.6rem 0.8rem",marginBottom:"0.8rem",fontSize:"0.7rem",color:C.pur}}>✦ <strong>AI:</strong> {stmt.notes}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.25rem",alignItems:"start"}}>
 
-        {/* Volume & Transactions */}
-        <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
-          <Fld label="Monthly Volume" pre="$" val={stmt.vol} set={set("vol")} hint="Total gross sales"/>
-          <Fld label="# Transactions" val={stmt.txn} set={set("txn")} hint="Total transaction count"/>
-        </div>
-        {calc.avg>0&&(
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",background:C.alt,borderRadius:7,marginBottom:"0.85rem"}}>
-            <span style={{fontSize:"0.7rem",color:C.mut}}>Average Ticket</span>
-            <span style={{fontSize:"0.7rem",fontFamily:"monospace",color:C.pur,fontWeight:700}}>{f$(calc.avg)}</span>
-          </div>
-        )}
-
-        {/* Pricing Model */}
-        <p style={{margin:"0 0 6px",fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>Pricing Model</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.5rem",marginBottom:"0.85rem"}}>
-          {[{id:"interchange_plus",label:"Interchange+",icon:"⚡"},{id:"flat_rate",label:"Flat Rate",icon:"▬"},{id:"tiered",label:"Tiered",icon:"◈"}].map(({id,label,icon})=>(
-            <div key={id} onClick={()=>onChange({pm:stmt.pm===id?"":id})}
-              style={{cursor:"pointer",borderRadius:9,padding:"0.7rem 0.5rem",textAlign:"center",background:stmt.pm===id?C.pbg:C.alt,border:`1.5px solid ${stmt.pm===id?C.pur:C.bdr}`,transition:"all 0.15s"}}>
-              <div style={{fontSize:"0.9rem",marginBottom:2}}>{icon}</div>
-              <div style={{fontSize:"0.67rem",fontWeight:700,color:stmt.pm===id?C.pur:C.txt}}>{label}</div>
-            </div>
-          ))}
-        </div>
-        {stmt.pm==="interchange_plus"&&(
-          <div style={{background:C.alt,borderRadius:9,padding:"0.9rem",marginBottom:"0.85rem"}}>
-            <p style={{margin:"0 0 0.5rem",fontSize:"0.65rem",fontWeight:700,color:C.pur,letterSpacing:"0.08em",textTransform:"uppercase"}}>⚡ Your Markup Over Interchange</p>
-            <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 0.8rem"}}>
-              <Fld label="Markup Rate" suf="%" val={stmt.icp} set={set("icp")} hint="e.g. 0.30"/>
-              <Fld label="Markup Per-Txn" pre="$" val={stmt.icpt} set={set("icpt")} hint="e.g. 0.10"/>
-            </div>
-          </div>
-        )}
-        {stmt.pm==="tiered"&&(
-          <div style={{background:"rgba(251,146,60,0.06)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:9,padding:"0.7rem 0.9rem",marginBottom:"0.85rem",fontSize:"0.7rem",color:"#FB923C"}}>
-            ⚠️ Tiered pricing is the least transparent model. Ask your processor for Interchange Plus — it's almost always cheaper.
-          </div>
-        )}
-
-        {/* Fees */}
-        <SH icon="🧾" title="Fees from Statement"/>
-        <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
-          <Fld label="Discount / Interchange" pre="$" val={stmt.disc} set={set("disc")} hint="% of volume fees"/>
-          <Fld label="Per-Transaction Fees" pre="$" val={stmt.txnf} set={set("txnf")} hint="Per-item fees"/>
-          <Fld label="Monthly Fixed Fees" pre="$" val={stmt.mnth} set={set("mnth")} hint="Statement, PCI, gateway"/>
-          <Fld label="Chargeback Fees" pre="$" val={stmt.cb} set={set("cb")} hint="Dispute & retrieval fees"/>
-        </div>
-        <Fld label="Other Fees" pre="$" val={stmt.oth} set={set("oth")} hint="Any additional charges"/>
-
-        {/* Per-statement KPIs */}
-        {calc.tot>0&&(
+          {/* LEFT */}
           <div>
-            <div className="three-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.6rem",marginBottom:"0.6rem"}}>
-              <KPI label="Effective Rate" val={fp(calc.er)} color={rateColor(calc.er)} accent/>
-              <KPI label="Total Fees" val={f$(calc.tot)}/>
-              <KPI label="Cost / Txn" val={calc.cpt>0?f$(calc.cpt):"—"}/>
-            </div>
-            <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem",marginBottom:"0.6rem"}}>
-              <KPI label="Processing Rate" val={fp(calc.pr)} sub="Variable fees only"/>
-              <KPI label="Fixed Fees" val={f$(calc.fix)} sub="Monthly + chargebacks"/>
-            </div>
-            {/* Fee bars */}
-            <div style={{background:C.alt,borderRadius:10,padding:"0.9rem",marginBottom:"0.6rem"}}>
-              <p style={{margin:"0 0 0.7rem",fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>Fee Breakdown</p>
-              <Bar label="Discount / Interchange" val={calc.d} total={calc.tot} color="#FF6D00"/>
-              <Bar label="Per-Transaction Fees" val={calc.tf} total={calc.tot} color="#FF8C3A"/>
-              <Bar label="Monthly Fixed Fees" val={calc.m} total={calc.tot} color="#60A5FA"/>
-              <Bar label="Chargeback Fees" val={calc.c} total={calc.tot} color="#F472B6"/>
-              <Bar label="Other Fees" val={calc.o} total={calc.tot} color="#94A3B8"/>
-            </div>
-            {/* MCC benchmark */}
-            <div style={{background:C.alt,borderRadius:10,padding:"0.9rem",cursor:"pointer"}} onClick={()=>setShowMCC(!showMCC)}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                <span style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>🏬 vs. MCC 5812 Benchmark</span>
-                <span style={{fontSize:"0.65rem",color:C.sub}}>{showMCC?"▲":"▼"}</span>
-              </div>
-              <div style={{position:"relative",height:5,background:C.bdr,borderRadius:3,marginBottom:5}}>
-                <div style={{position:"absolute",left:`${Math.min((MCC.avgRate/5)*100,100)}%`,top:-4,width:2,height:13,background:C.yel,borderRadius:1}}/>
-                <div style={{width:`${Math.min((calc.er/5)*100,100)}%`,height:"100%",background:rateColor(calc.er),borderRadius:3}}/>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.62rem"}}>
-                <span style={{color:rateColor(calc.er)}}>Your rate: {fp(calc.er,2)}</span>
-                <span style={{color:C.yel}}>Benchmark: ~{MCC.avgRate}%</span>
-              </div>
-              {calc.er>MCC.avgRate&&<p style={{marginTop:"0.4rem",fontSize:"0.67rem",color:"#FB923C"}}>⚠️ {fp(calc.er-MCC.avgRate,2)} above benchmark — ~{f$((calc.er-MCC.avgRate)/100*calc.v)}/mo potential overcharge</p>}
-              {showMCC&&(
-                <div className="fade" style={{marginTop:"0.7rem",paddingTop:"0.7rem",borderTop:`1px solid ${C.bdr}`}}>
-                  <p style={{margin:"0 0 6px",fontSize:"0.68rem",fontWeight:700,color:C.txt}}>MCC 5812 Interchange Benchmarks:</p>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem"}}>
-                    {[["Visa Consumer Credit","1.43–1.58% + $0.10"],["Visa Debit (regulated)","0.05% + $0.21"],["MC Consumer Credit","1.48–1.58% + $0.10"],["MC Debit (regulated)","0.05% + $0.21"],["Visa Debit (unreg.)","0.80% + $0.15"],["Amex OptBlue","1.35–2.40% + varies"]].map(([name,rate])=>(
-                      <div key={name} style={{background:C.bg,borderRadius:6,padding:"0.4rem 0.6rem"}}>
-                        <div style={{color:C.txt,fontSize:"0.67rem",fontWeight:600}}>{name}</div>
-                        <div style={{color:C.pur,fontFamily:"monospace",fontSize:"0.65rem"}}>{rate}</div>
-                      </div>
-                    ))}
+            <Card>
+              <STitle>Step 1 — Current Processor Fees</STitle>
+
+              {/* Upload */}
+              <div onClick={()=>fileRef.current?.click()}
+                onDrop={e=>{e.preventDefault();setDrag(false);processFile(e.dataTransfer.files[0]);}}
+                onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)}
+                style={{border:`2px dashed ${drag?OR:loading?"#FFB87A":"#DDD"}`,borderRadius:10,padding:"1rem",textAlign:"center",background:drag?"#FFF4EE":"#FAFAFA",cursor:"pointer",marginBottom:"1rem",transition:"all 0.2s"}}>
+                <input ref={fileRef} type="file" accept=".pdf,.csv,image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
+                {loading?(
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                    <div style={{width:18,height:18,border:"2px solid #FFD4A8",borderTop:`2px solid ${OR}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+                    <span style={{fontSize:"0.85rem",color:OR,fontWeight:600}}>AI reading your statement…</span>
                   </div>
-                  <p style={{marginTop:"0.5rem",fontSize:"0.65rem",color:C.sub,lineHeight:1.5}}>{MCC.note}</p>
-                </div>
-              )}
-            </div>
+                ):fname?(
+                  <div>
+                    <p style={{margin:0,fontSize:"0.85rem",color:OR,fontWeight:700}}>✅ {fname}</p>
+                    <p style={{margin:"3px 0 0",fontSize:"0.72rem",color:"#AAA"}}>Click to upload a different file</p>
+                  </div>
+                ):(
+                  <div>
+                    <div style={{fontSize:"1.8rem",marginBottom:6}}>📄</div>
+                    <p style={{margin:0,fontSize:"0.88rem",color:"#333",fontWeight:600}}>Upload Statement — AI fills fields automatically</p>
+                    <p style={{margin:"4px 0 8px",fontSize:"0.75rem",color:"#AAA"}}>PDF (under 3.5mb), screenshot PNG/JPG, or CSV export</p>
+                    <span style={{display:"inline-block",background:OR,color:"#fff",borderRadius:7,padding:"7px 18px",fontSize:"0.8rem",fontWeight:700}}>Choose File</span>
+                  </div>
+                )}
+              </div>
+
+              {err&&<div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:8,padding:"0.7rem 1rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#B91C1C",lineHeight:1.5}}>⚠️ {err}</div>}
+              {notes&&<div style={{background:"#FFF4EE",border:`1px solid ${OR}40`,borderRadius:8,padding:"0.7rem 1rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#7C2D12",lineHeight:1.5}}>🔥 <strong>AI Notes:</strong> {notes}</div>}
+
+              <div style={{marginBottom:"0.75rem"}}>
+                <p style={{margin:"0 0 5px",fontSize:"0.72rem",fontWeight:600,color:"#666",textTransform:"uppercase",letterSpacing:"0.06em"}}>Current Processor Name</p>
+                <input type="text" value={processor} onChange={e=>setProcessor(e.target.value)} placeholder="e.g. FISERV, Square, Heartland"
+                  style={{width:"100%",background:"#fff",border:"2px solid #E0E0E0",borderRadius:8,padding:"10px 12px",fontSize:"0.95rem",color:"#1A1A1A",fontFamily:"Inter,sans-serif",outline:"none"}}/>
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+                <Field label="Monthly Card Volume" pre="$" val={vol} set={setVol} hint="Total gross card sales" large/>
+                <Field label="# Transactions" val={txn} set={setTxn} hint="Total transaction count" large/>
+              </div>
+
+              {avgTicket>0&&<div style={{background:"#FFF4EE",borderRadius:7,padding:"8px 12px",marginBottom:"0.75rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:"0.78rem",color:"#888"}}>Average ticket size</span>
+                <span style={{fontSize:"0.85rem",fontFamily:"'DM Mono',monospace",color:OR,fontWeight:700}}>{f$c(avgTicket)}</span>
+              </div>}
+
+              <p style={{margin:"0.5rem 0 0.6rem",fontSize:"0.72rem",fontWeight:700,color:"#999",textTransform:"uppercase",letterSpacing:"0.08em",paddingTop:"0.6rem",borderTop:"1px solid #F0F0F0"}}>Fee Breakdown</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+                <Field label="Discount / Interchange" pre="$" val={disc} set={setDisc} hint="% of volume fees"/>
+                <Field label="Per-Transaction Fees" pre="$" val={txnf} set={setTxnf} hint="Per-item / auth fees"/>
+                <Field label="Monthly Fixed Fees" pre="$" val={mnth} set={setMnth} hint="Statement, PCI, gateway"/>
+                <Field label="Chargeback Fees" pre="$" val={cb} set={setCb} hint="Dispute fees"/>
+              </div>
+              <Field label="Other Fees" pre="$" val={oth} set={setOth} hint="Any other charges"/>
+            </Card>
+
+            <Card>
+              <STitle>Step 2 — Toast's Quoted Rate</STitle>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+                <Field label="Toast Rate %" suf="%" val={toastRate} set={setToastRate} hint="e.g. 2.49" large placeholder="2.49"/>
+                <Field label="Toast Per-Transaction" pre="$" val={toastPer} set={setToastPer} hint="e.g. 0.15" placeholder="0.15"/>
+              </div>
+              <Field label="Toast Monthly Fees" pre="$" val={toastMnth} set={setToastMnth} hint="Monthly fees (0 if included in rate)"/>
+            </Card>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function emptyStmt(label=""){return{label,fname:"",notes:"",vol:"",txn:"",disc:"",txnf:"",mnth:"",cb:"",oth:"",pm:"",icp:"",icpt:""};}
-
-function App(){
-  const[stmts,setStmts]=useState([emptyStmt("Statement 1")]);
-  const[tab,setTab]=useState("statements");
-  const[qr,setQr]=useState("");
-  const[qpt,setQpt]=useState("");
-
-  const upd=(i,u)=>setStmts(p=>p.map((s,idx)=>idx===i?{...s,...u}:s));
-  const rem=i=>setStmts(p=>p.filter((_,idx)=>idx!==i));
-  const add=()=>setStmts(p=>[...p,emptyStmt(`Statement ${p.length+1}`)]);
-
-  const valid=stmts.filter(s=>n(s.vol)>0);
-  const multi=valid.length>=2;
-
-  const totals=useMemo(()=>{
-    if(!valid.length)return null;
-    const agg=valid.reduce((a,s)=>{
-      const c=calcS(s);
-      return{v:a.v+c.v,t:a.t+c.t,tot:a.tot+c.tot,d:a.d+c.d,tf:a.tf+c.tf,m:a.m+c.m,c:a.c+c.c,o:a.o+c.o};
-    },{v:0,t:0,tot:0,d:0,tf:0,m:0,c:0,o:0});
-    const mo=valid.length;
-    agg.er=agg.v>0?(agg.tot/agg.v)*100:0;
-    agg.pr=agg.v>0?((agg.d+agg.tf)/agg.v)*100:0;
-    agg.cpt=agg.t>0?agg.tot/agg.t:0;
-    agg.avg=agg.t>0&&agg.v>0?agg.v/agg.t:0;
-    agg.mo=mo;
-    agg.annV=agg.v/mo*12;
-    agg.annF=agg.tot/mo*12;
-    return agg;
-  },[valid]);
-
-  const qcost=totals&&n(qr)>0?((totals.v/totals.mo)*(n(qr)/100)+(totals.t/totals.mo)*n(qpt)):0;
-  const qeff=totals&&qcost>0?(qcost/(totals.v/totals.mo))*100:0;
-  const actMo=totals?totals.tot/totals.mo:0;
-  const sav=qcost>0?qcost-actMo:null;
-
-  return(
-    <div style={{minHeight:"100vh",background:C.bg,padding:"1.5rem 1rem 3rem"}}>
-      <div style={{maxWidth:1140,margin:"0 auto"}}>
-
-        {/* HEADER */}
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem",marginBottom:"1.8rem"}}>
+          {/* RIGHT */}
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"0.8rem"}}>
-              {/* Toast logo — bread icon + wordmark */}
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-                  <path d="M8 14 C8 9 13 6 18 6 C23 6 28 9 28 14 L28 16 C28 16 26 15 24 16 C22 17 20 16 18 16 C16 16 14 17 12 16 C10 15 8 16 8 16 Z" fill="white"/>
-                  <rect x="8" y="16" width="20" height="14" rx="2" fill="white"/>
-                </svg>
-                <span style={{fontSize:"1.5rem",fontWeight:800,color:"#FFFFFF",letterSpacing:"-0.03em",fontFamily:"'DM Sans',sans-serif"}}>toast</span>
+            {/* SAVINGS HERO */}
+            {hasCurrent&&hasToast?(
+              <div className="pop" style={{background:saving?OR:"#F0F0F0",borderRadius:16,padding:"1.5rem",marginBottom:"1rem",textAlign:"center",boxShadow:saving?"0 4px 24px rgba(255,109,0,0.4)":"none"}}>
+                {saving?(
+                  <>
+                    <p style={{margin:0,fontSize:"0.8rem",fontWeight:700,color:"rgba(255,255,255,0.85)",textTransform:"uppercase",letterSpacing:"0.1em"}}>Monthly Savings with Toast</p>
+                    <p style={{margin:"6px 0 2px",fontSize:"3.2rem",fontWeight:900,color:"#fff",fontFamily:"'DM Mono',monospace",lineHeight:1}}>{f$(monthlySavings)}</p>
+                    <p style={{margin:0,fontSize:"1.05rem",color:"rgba(255,255,255,0.95)",fontWeight:600}}>{f$(annualSavings)} saved per year</p>
+                    <div style={{marginTop:"1rem",background:"rgba(0,0,0,0.15)",borderRadius:10,padding:"0.8rem 1rem",display:"flex",justifyContent:"space-around"}}>
+                      {[["Current Rate",fp(effectiveRate),"rgba(255,255,255,0.8)"],["→","","rgba(255,255,255,0.4)"],["Toast Rate",fp(toastRateEff),"#fff"],["→","","rgba(255,255,255,0.4)"],["You Save","-"+fp(effectiveRate-toastRateEff),"#fff"]].map(([l,v,c],i)=>(
+                        <div key={i} style={{textAlign:"center"}}>
+                          <p style={{margin:0,fontSize:"0.65rem",color:"rgba(255,255,255,0.7)"}}>{l}</p>
+                          <p style={{margin:"2px 0 0",fontSize:l==="→"?"1.2rem":"1.05rem",fontWeight:700,fontFamily:"'DM Mono',monospace",color:c}}>{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ):(
+                  <>
+                    <p style={{margin:0,fontSize:"0.9rem",fontWeight:700,color:"#555"}}>Toast costs more at this quoted rate</p>
+                    <p style={{margin:"4px 0 0",fontSize:"0.8rem",color:"#AAA"}}>Try adjusting the quoted rate or reviewing their current fees</p>
+                  </>
+                )}
               </div>
-              <span style={{width:1,height:16,background:"rgba(255,255,255,0.4)"}}/>
-              <span style={{fontSize:"0.72rem",color:C.mut}}>Payments Analyzer</span>
-            </div>
-            <span style={{display:"inline-flex",alignItems:"center",gap:6,background:C.pbg,border:`1px solid ${C.pdim}40`,borderRadius:100,padding:"3px 12px",fontSize:"0.63rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.pur}}>🍽️ Restaurant Statement Intelligence</span>
-            <h1 style={{margin:"0.6rem 0 0.3rem",fontSize:"clamp(1.6rem,3.5vw,2.4rem)",fontWeight:800,lineHeight:1.08,letterSpacing:"-0.02em"}}>
-              Uncover Your True<br/><span style={{color:C.pur}}>Processing Cost</span>
-            </h1>
-            <p style={{margin:0,color:C.mut,fontSize:"0.85rem"}}>Upload statements — AI extracts every fee. Compare months, spot overcharges.</p>
-          </div>
-          {totals&&totals.er>0&&(
-            <div style={{background:"rgba(255,255,255,0.9)",border:`1.5px solid ${rateColor(totals.er)}`,borderRadius:14,padding:"1rem 1.3rem",textAlign:"center",minWidth:150}}>
-              <p style={{margin:0,fontSize:"0.58rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.mut}}>{multi?"Blended ":""}Effective Rate</p>
-              <p style={{margin:"4px 0 2px",fontSize:"1.9rem",fontWeight:800,fontFamily:"monospace",color:rateColor(totals.er),lineHeight:1}}>{fp(totals.er)}</p>
-              <p style={{margin:0,fontSize:"0.7rem",color:rateColor(totals.er)}}>{rateLabel(totals.er)}</p>
-            </div>
-          )}
-        </div>
-
-        {/* TABS */}
-        {multi&&(
-          <div style={{display:"flex",gap:4,marginBottom:"1.2rem",background:C.sur,borderRadius:10,padding:4,width:"fit-content"}}>
-            {[{id:"statements",label:"📋 Statements"},{id:"compare",label:"🔀 Compare"}].map(t=>(
-              <button key={t.id} onClick={()=>setTab(t.id)}
-                style={{padding:"6px 16px",borderRadius:7,border:"none",cursor:"pointer",fontSize:"0.75rem",fontWeight:700,background:tab===t.id?C.pur:"transparent",color:tab===t.id?C.wht:C.mut,transition:"all 0.15s"}}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* COMPARE TAB */}
-        {tab==="compare"&&multi&&(
-          <div className="fade">
-            <TrendChart statements={stmts}/>
-            <CompareTable statements={stmts}/>
-          </div>
-        )}
-
-        {/* STATEMENTS TAB */}
-        {(tab==="statements"||!multi)&&(
-          <div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(440px,1fr))",gap:"1.2rem",marginBottom:"1.2rem"}}>
-              {stmts.map((s,i)=>(
-                <StatementPanel key={i} stmt={s} index={i}
-                  onChange={u=>upd(i,u)}
-                  onRemove={stmts.length>1?()=>rem(i):null}/>
-              ))}
-            </div>
-
-            <button onClick={add}
-              style={{width:"100%",padding:"0.85rem",background:"transparent",border:`2px dashed ${C.bdr}`,borderRadius:14,cursor:"pointer",color:C.sub,fontSize:"0.78rem",fontWeight:600,marginBottom:"1.5rem",transition:"all 0.2s"}}
-              onMouseEnter={e=>{e.target.style.borderColor=C.pur;e.target.style.color=C.pur;}}
-              onMouseLeave={e=>{e.target.style.borderColor=C.bdr;e.target.style.color=C.sub;}}>
-              + Add Another Statement
-            </button>
-
-            {/* SUMMARY */}
-            {totals&&(
-              <div className="fade">
-                <div style={{marginBottom:"1rem",paddingBottom:"0.5rem",borderBottom:`1px solid ${C.bdr}`}}>
-                  <h2 style={{margin:0,fontSize:"0.65rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:C.mut}}>
-                    {multi?"📊 Blended Summary — All Statements":"📊 Summary"}
-                  </h2>
-                </div>
-
-                <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.2rem"}}>
-                  {/* LEFT */}
-                  <div style={{display:"flex",flexDirection:"column",gap:"1.1rem"}}>
-                    {/* True Cost */}
-                    <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem"}}>
-                      <SH icon="💡" title="Your True Cost"/>
-                      <div style={{display:"grid",gap:"0.6rem"}}>
-                        <KPI label={multi?"Blended Effective Rate":"Effective Rate — All In"} val={fp(totals.er)} color={rateColor(totals.er)} accent hero/>
-                        <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem"}}>
-                          <KPI label="Processing Rate" val={fp(totals.pr)} sub="Variable fees only"/>
-                          <KPI label="Cost Per Transaction" val={totals.cpt>0?f$(totals.cpt):"—"}/>
-                        </div>
-                        <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem"}}>
-                          <KPI label={multi?"Avg Monthly Fees":"Total Fees Paid"} val={f$(totals.tot/totals.mo)} sub="This period"/>
-                          <KPI label="Avg Ticket" val={totals.avg>0?f$(totals.avg):"—"} sub="Vol ÷ transactions"/>
-                        </div>
-                        <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem"}}>
-                          <KPI label="Annual Volume (proj)" val={f$(totals.annV)}/>
-                          <KPI label="Annual Fees (proj)" val={f$(totals.annF)}/>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quoted vs Actual */}
-                    <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem"}}>
-                      <SH icon="⚖️" title="Compare to Quoted Rate"/>
-                      <Fld label="Quoted Rate" suf="%" val={qr} set={setQr} hint="e.g. 2.5"/>
-                      <Fld label="Quoted Per-Transaction Fee" pre="$" val={qpt} set={setQpt} hint="e.g. 0.10"/>
-                      {qcost>0&&(
-                        <div className="fade">
-                          <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem",marginBottom:"0.6rem"}}>
-                            <div style={{background:C.alt,borderRadius:9,padding:"0.8rem"}}>
-                              <p style={{margin:0,fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>Quoted Cost</p>
-                              <p style={{margin:"3px 0 0",fontSize:"1.1rem",fontWeight:800,fontFamily:"monospace",color:C.mut}}>{f$(qcost)}</p>
-                              <p style={{margin:"2px 0 0",fontSize:"0.66rem",color:C.sub}}>{fp(qeff,2)} effective</p>
-                            </div>
-                            <div style={{background:C.alt,borderRadius:9,padding:"0.8rem"}}>
-                              <p style={{margin:0,fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:C.mut}}>Actual Cost</p>
-                              <p style={{margin:"3px 0 0",fontSize:"1.1rem",fontWeight:800,fontFamily:"monospace",color:C.txt}}>{f$(actMo)}</p>
-                              <p style={{margin:"2px 0 0",fontSize:"0.66rem",color:C.sub}}>{fp(totals.er,2)} effective</p>
-                            </div>
-                          </div>
-                          {sav!==null&&(
-                            <div style={{background:sav>0?"rgba(239,68,68,0.08)":"rgba(34,197,94,0.08)",border:`1px solid ${sav>0?"rgba(239,68,68,0.3)":"rgba(34,197,94,0.3)"}`,borderRadius:9,padding:"0.7rem 0.9rem",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                              <span style={{fontSize:"0.73rem",color:sav>0?"#FCA5A5":"#86EFAC"}}>{sav>0?"⚠️ Paying MORE than quoted":"✅ Paying LESS than quoted"}</span>
-                              <span style={{fontFamily:"monospace",fontWeight:800,fontSize:"0.95rem",color:sav>0?C.red:C.grn,whiteSpace:"nowrap"}}>{sav>0?"+":"-"}{f$(Math.abs(sav))}/mo</span>
-                            </div>
-                          )}
-                          {sav>0&&<p style={{marginTop:"0.45rem",fontSize:"0.67rem",color:C.sub}}>Annual overcharge: <strong style={{color:C.red}}>{f$(sav*12)}</strong></p>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* RIGHT */}
-                  <div style={{display:"flex",flexDirection:"column",gap:"1.1rem"}}>
-                    {/* Fee breakdown */}
-                    <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem"}}>
-                      <SH icon="📋" title={multi?"Fee Breakdown — All Periods":"Fee Breakdown"}/>
-                      <Bar label="Discount / Interchange" val={totals.d} total={totals.tot} color="#FF6D00"/>
-                      <Bar label="Per-Transaction Fees" val={totals.tf} total={totals.tot} color="#FF8C3A"/>
-                      <Bar label="Monthly Fixed Fees" val={totals.m} total={totals.tot} color="#60A5FA"/>
-                      <Bar label="Chargeback Fees" val={totals.c} total={totals.tot} color="#F472B6"/>
-                      <Bar label="Other Fees" val={totals.o} total={totals.tot} color="#94A3B8"/>
-                      <div style={{marginTop:"0.85rem",paddingTop:"0.65rem",borderTop:`1px solid ${C.bdr}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <span style={{fontSize:"0.75rem",fontWeight:700,color:C.txt}}>Total {multi?"(all periods)":""}</span>
-                        <span style={{fontFamily:"monospace",fontWeight:800,color:C.pur}}>{f$(totals.tot)}</span>
-                      </div>
-                      {multi&&(
-                        <div style={{marginTop:"0.3rem",display:"flex",justifyContent:"space-between"}}>
-                          <span style={{fontSize:"0.69rem",color:C.sub}}>Monthly average</span>
-                          <span style={{fontFamily:"monospace",fontSize:"0.77rem",color:C.mut}}>{f$(totals.tot/totals.mo)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Annualized */}
-                    <div style={{background:C.sur,border:`1px solid ${C.bdr}`,borderRadius:14,padding:"1.2rem"}}>
-                      <SH icon="📅" title="Annualized Projections"/>
-                      <div className="two-col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem"}}>
-                        <KPI label="Annual Volume" val={f$(totals.annV)}/>
-                        <KPI label="Annual Fees" val={f$(totals.annF)}/>
-                      </div>
-                      {sav>0&&(
-                        <div style={{marginTop:"0.7rem",padding:"0.7rem 0.9rem",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:9}}>
-                          <p style={{margin:0,fontSize:"0.7rem",color:"#FCA5A5"}}>At current overcharge rate:</p>
-                          <p style={{margin:"3px 0 0",fontFamily:"monospace",fontWeight:800,color:C.red,fontSize:"1rem"}}>{f$(sav*12)}/year excess fees</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+            ):(
+              <div style={{background:"#fff",border:"2px dashed #E5E5E5",borderRadius:16,padding:"2.5rem 1.5rem",textAlign:"center",marginBottom:"1rem"}}>
+                <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>💰</div>
+                <p style={{margin:0,fontSize:"1rem",fontWeight:700,color:"#333"}}>Savings appear here</p>
+                <p style={{margin:"6px 0 0",fontSize:"0.85rem",color:"#AAA",lineHeight:1.6}}>Enter the prospect's current fees and Toast's quoted rate to see exact monthly and annual savings.</p>
               </div>
             )}
-          </div>
-        )}
 
-        <p style={{textAlign:"center",marginTop:"2rem",fontSize:"0.6rem",color:C.sub}}>
-          MCC 5812 · Effective rate = total fees ÷ total volume · Toast Payments Intelligence
+            {/* Current processor summary */}
+            {hasCurrent&&(
+              <Card>
+                <STitle>Current Processor — True Cost</STitle>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem",marginBottom:"0.75rem"}}>
+                  <div style={{background:"#FAFAFA",borderRadius:10,padding:"1rem",border:"1px solid #F0F0F0"}}>
+                    <p style={{margin:0,fontSize:"0.68rem",fontWeight:600,color:"#999",textTransform:"uppercase"}}>Effective Rate</p>
+                    <p style={{margin:"4px 0 0",fontSize:"1.8rem",fontWeight:900,fontFamily:"'DM Mono',monospace",color:rateColor(effectiveRate),lineHeight:1}}>{fp(effectiveRate)}</p>
+                    <p style={{margin:"3px 0 0",fontSize:"0.72rem",color:rateColor(effectiveRate),fontWeight:500}}>{rateLabel(effectiveRate)}</p>
+                  </div>
+                  <div style={{background:"#FAFAFA",borderRadius:10,padding:"1rem",border:"1px solid #F0F0F0"}}>
+                    <p style={{margin:0,fontSize:"0.68rem",fontWeight:600,color:"#999",textTransform:"uppercase"}}>Monthly Fees</p>
+                    <p style={{margin:"4px 0 0",fontSize:"1.8rem",fontWeight:900,fontFamily:"'DM Mono',monospace",color:"#1A1A1A",lineHeight:1}}>{f$(totalFees)}</p>
+                    <p style={{margin:"3px 0 0",fontSize:"0.72rem",color:"#AAA"}}>{f$(totalFees*12)}/year</p>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                  {[["Cost/Txn",costPerTxn>0?f$c(costPerTxn):"—"],["Volume",f$(v)],["Avg Ticket",avgTicket>0?f$c(avgTicket):"—"]].map(([l,val])=>(
+                    <div key={l} style={{background:"#FAFAFA",borderRadius:8,padding:"0.65rem 0.75rem",border:"1px solid #F0F0F0"}}>
+                      <p style={{margin:0,fontSize:"0.65rem",fontWeight:600,color:"#AAA",textTransform:"uppercase"}}>{l}</p>
+                      <p style={{margin:"2px 0 0",fontSize:"0.9rem",fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#333"}}>{val}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Fee bars */}
+                {[["Discount/Interchange",n(disc),"#FF6D00"],["Per-Transaction",n(txnf),"#FB923C"],["Monthly Fixed",n(mnth),"#60A5FA"],["Chargebacks",n(cb),"#F472B6"],["Other",n(oth),"#94A3B8"]].filter(([,v])=>v>0).map(([label,val,color])=>{
+                  const pct=totalFees>0?(val/totalFees)*100:0;
+                  return(
+                    <div key={label} style={{marginBottom:"0.55rem"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                        <span style={{fontSize:"0.75rem",color:"#555"}}>{label}</span>
+                        <span style={{fontSize:"0.75rem",fontFamily:"'DM Mono',monospace",color:"#1A1A1A",fontWeight:500}}>{f$c(val)} <span style={{color:"#AAA",fontWeight:400}}>({pct.toFixed(0)}%)</span></span>
+                      </div>
+                      <div style={{height:6,background:"#F0F0F0",borderRadius:3}}>
+                        <div style={{width:`${pct}%`,height:"100%",background:color,borderRadius:3,transition:"width 0.4s"}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* Comparison table */}
+            {hasCurrent&&hasToast&&(
+              <Card>
+                <STitle>Side-by-Side Comparison</STitle>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem"}}>
+                  <thead>
+                    <tr>
+                      <th style={{textAlign:"left",padding:"7px 8px",color:"#AAA",fontWeight:600,fontSize:"0.72rem",borderBottom:"2px solid #F0F0F0"}}></th>
+                      <th style={{textAlign:"right",padding:"7px 8px",color:"#666",fontWeight:700,borderBottom:"2px solid #F0F0F0"}}>{processor||"Current"}</th>
+                      <th style={{textAlign:"right",padding:"7px 8px",color:OR,fontWeight:700,borderBottom:"2px solid #F0F0F0"}}>Toast</th>
+                      <th style={{textAlign:"right",padding:"7px 8px",color:"#16a34a",fontWeight:700,borderBottom:"2px solid #F0F0F0"}}>Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ["Effective Rate",fp(effectiveRate),fp(toastRateEff),saving?`-${fp(effectiveRate-toastRateEff)}`:null,true],
+                      ["Monthly Cost",f$c(totalFees),f$c(toastMonthlyCost),saving?f$(monthlySavings):null,false],
+                      ["Annual Cost",f$(totalFees*12),f$(toastMonthlyCost*12),saving?f$(annualSavings):null,false],
+                      ["Cost Per Txn",costPerTxn>0?f$c(costPerTxn):"—",t>0?f$c(toastMonthlyCost/t):"—",null,false],
+                    ].map(([label,curr,toast,sav,bold],i)=>(
+                      <tr key={label} style={{background:i%2===0?"#FAFAFA":"#fff"}}>
+                        <td style={{padding:"8px",color:"#555",fontWeight:500}}>{label}</td>
+                        <td style={{textAlign:"right",padding:"8px",fontFamily:"'DM Mono',monospace",color:"#666",fontWeight:bold?700:400}}>{curr}</td>
+                        <td style={{textAlign:"right",padding:"8px",fontFamily:"'DM Mono',monospace",color:OR,fontWeight:bold?700:400}}>{toast}</td>
+                        <td style={{textAlign:"right",padding:"8px",fontFamily:"'DM Mono',monospace",color:"#16a34a",fontWeight:700}}>{sav||"—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {saving&&<div style={{marginTop:"0.75rem",background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"0.75rem 1rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:"0.82rem",color:"#166534",fontWeight:600}}>🎉 Annual savings with Toast</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontWeight:900,fontSize:"1.2rem",color:"#16a34a"}}>{f$(annualSavings)}</span>
+                </div>}
+              </Card>
+            )}
+
+            {/* MCC benchmark */}
+            {hasCurrent&&(
+              <Card>
+                <STitle>🍽️ MCC 5812 Industry Benchmark</STitle>
+                <div style={{position:"relative",height:10,background:"#F0F0F0",borderRadius:5,marginBottom:8}}>
+                  <div style={{position:"absolute",left:`${Math.min((2.5/6)*100,100)}%`,top:-3,width:3,height:16,background:"#F59E0B",borderRadius:2}}/>
+                  <div style={{width:`${Math.min((effectiveRate/6)*100,100)}%`,height:"100%",background:rateColor(effectiveRate),borderRadius:5}}/>
+                  {toastRateEff>0&&<div style={{position:"absolute",left:`${Math.min((toastRateEff/6)*100,100)}%`,top:-1,width:2,height:12,background:OR,borderRadius:1,opacity:0.7}}/>}
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.75rem",marginBottom:"0.75rem"}}>
+                  <span style={{color:rateColor(effectiveRate),fontWeight:600}}>Current: {fp(effectiveRate)}</span>
+                  {toastRateEff>0&&<span style={{color:OR,fontWeight:600}}>Toast: {fp(toastRateEff)}</span>}
+                  <span style={{color:"#F59E0B",fontWeight:500}}>Restaurant avg: ~2.5%</span>
+                </div>
+                {effectiveRate>2.5&&<p style={{fontSize:"0.78rem",color:"#EA580C",fontWeight:500,marginBottom:"0.6rem"}}>⚠️ This prospect is paying {fp(effectiveRate-2.5)} above the restaurant industry average — {f$((effectiveRate-2.5)/100*v)}/mo above benchmark.</p>}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem"}}>
+                  {[["Visa Consumer Credit","1.54–1.80%"],["Visa Debit (regulated)","0.05%+$0.21"],["MC Consumer Credit","1.58–1.73%"],["MC Debit (regulated)","0.05%+$0.21"]].map(([name,rate])=>(
+                    <div key={name} style={{background:"#FAFAFA",borderRadius:7,padding:"0.5rem 0.7rem",border:"1px solid #F0F0F0"}}>
+                      <div style={{fontSize:"0.7rem",fontWeight:600,color:"#555"}}>{name}</div>
+                      <div style={{fontSize:"0.72rem",fontFamily:"'DM Mono',monospace",color:OR,marginTop:1}}>{rate}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        <p style={{textAlign:"center",marginTop:"1.5rem",fontSize:"0.68rem",color:"#CCC"}}>
+          MCC 5812 · Toast Payments Intelligence · Effective rate = total fees ÷ total volume
         </p>
       </div>
     </div>
